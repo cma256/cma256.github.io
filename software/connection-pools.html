@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../style.css">
+    <title>Connection Pools - cma256</title>
+</head>
+<body>
+    <main>
+        <article>
+            <header>
+                <h1>Connection Pools are not Connection Limits</h1>
+                <p>Published on Wednesday, August 20, 2025 - 11:00 PM CDT</p>
+            </header>
+            <p>Suppose you have a connection pool of ten connections. What's the appropriate number of threads you should use to maximize the amount of concurrent requests your application can make? Is it less than ten, more than ten, or exactly ten?</p>
+            <p>The answer is <i>I don't know</i>. It depends on the service you're contacting. But! Whatever the answer may be, the solution has nothing to do with the size of your connection pool (at least in Python if you're using urllib3 or a derivative library).</p>
+            <p>A connection pool will allow you to re-use connections that have already been established for each request that follows the first. This is an optimization not validation. There is nothing preventing you from creating a new connection if every connection in the pool has been claimed. You can prove this by setting your pool-size to zero and making a request using it. The connection won't be retained for re-use but you're free to make that request anyway.</p>
+            <p>If you want to enforce a connection limit in your application you can do so by setting <a href="https://urllib3.readthedocs.io/en/stable/reference/urllib3.connectionpool.html#urllib3.HTTPConnectionPool">block=True</a> in your pool definition. Setting the pool-size to one with block set to true will make the program sequential regardless of the number of threads used.</p>
+            <p>I found this out today and it surprised me. I've been using connection pools for more than a decade and I've only now discovered this behavior. It makes me wonder; is this a me-problem or are connection pools not well-named? Is a non-blocking connection pool better described as a connection cache? I don't know but now I wonder what else I've misunderstood about the world.</p>
+            <footer>
+                <p><a href="../index.html">Return Home</a></p>
+            </footer>
+        </article>
+    </main>
+</body>
+</html>
