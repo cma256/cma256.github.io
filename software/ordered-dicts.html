@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../style.css">
+    <title>Ordered Dictionaries in 2025 - cma256</title>
+</head>
+<body>
+    <main>
+        <article>
+            <header>
+                <h1>Ordered Dictionaries in 2025</h1>
+                <p>Published on Friday, August 22, 2025 - 3:00 PM CDT</p>
+            </header>
+            <p>In Python 3.7 dictionaries finally became insertion ordered by default. This was the final nail in the coffin of the long and illustrious life of the humble ordered dictionary. In the proceeding years, the ordered dictionary would fade into irrelevance. A relic of a language limitation long resolved.</p>
+            <p>Or so some of you may believe! Ordered dictionaries have a number of nice properties that dictionaries do not have. Ordered dictionaries allow you to pop from the head and the tail in constant time. Dictionaries only pop from the tail in constant time. This means an ordered dictionary can be used as a queue!</p>
+            <p>"But we have deques!" you protest. Yes we do (and they're faster than ordered dictionaries when comparing raw insertion performance). But if you want to make a cache (say using a FIFO expiration policy) suddenly your deque doesn't satisfy the O(1) lookup requirement. So you pull in a regular dictionary for the lookups and maintain a deque for efficient popping from the head. Congratulations, your solution is now slower than an ordered dictionary and it requires keeping two data structures in sync!</p>
+            <p>But most people don't want a FIFO cache. They want some sophistication. They want to expire keys after some timeout. They want to keep frequently accessed keys in the cache longer than other keys. Ordered dictionaries offer constant-time key popping from any position in the queue! Ordered dictionaries expose a "move_to_end" method which can move an item at any position in the queue to either the head or the tail. Its the easiest LRU cache you'll ever implement.</p>
+            <p><a href="https://docs.python.org/3/library/collections.html#ordereddict-examples-and-recipes">Look at these examples</a> in the official Python documentation. You don't write these unless you're really proud of what you've done. And they should be! What a wonderful tool.</p>
+            <p>Long live the ordered dictionary!</p>
+            <footer>
+                <p><a href="../index.html">Return Home</a></p>
+            </footer>
+        </article>
+    </main>
+</body>
+</html>
