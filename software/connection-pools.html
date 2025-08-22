@@ -19,7 +19,10 @@
             <p>If you want to enforce a connection limit in your application you can do so by setting <a href="https://urllib3.readthedocs.io/en/stable/reference/urllib3.connectionpool.html#urllib3.HTTPConnectionPool">block=True</a> in your pool definition. Setting the pool-size to one with block set to true will make the program sequential regardless of the number of threads used.</p>
             <p>I found this out today and it surprised me. I've been using connection pools for more than a decade and I've only now discovered this behavior. It makes me wonder; is this a me-problem or are connection pools not well-named? Is a non-blocking connection pool better described as a connection cache? I don't know but now I wonder what else I've misunderstood about the world.</p>
             <footer>
-                <p><a href="../index.html">Return Home</a></p>
+                <p>
+                    <a href="https://github.com/cma256/cma256.github.io/issues/1">Leave a comment</a> | 
+                    <a href="../index.html">Return Home</a>
+                </p>
             </footer>
         </article>
     </main>
