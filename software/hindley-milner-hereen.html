@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../style.css">
+    <title>Hindley-Milner Hereen's Way</title>
+</head>
+<body>
+    <main>
+        <article>
+            <header>
+                <h1>Hindley-Milner Hereen's Way</h1>
+                <p>Published on Sunday, August 24, 2025 - 8:30 PM CDT</p>
+            </header>
+            <p>It's been three months since my last attempt to finish my let-polymorphic, Hindley Milner type inference implementation. Unfortunately, it seems unlikely I'll finish it any time soon. But from that failure comes an opportunity to write, reflect, and preserve whatever I managed to learn.</p>
+            <p>This is a tutorial but be aware the implementation is incomplete. Should you know how to complete the implementation please get in touch! My email is at the top of the index page and there is a comment thread linked in the footer of this page.</p>
+            <p>This tutorial assumes some basic understanding of Rust.</p>
+            <h2>Hereen's Implementation</h2>
+            <h2>Preamble</h2>
+            <p>Before we can infer the types of an abstract syntax tree we need to define one. We need two types. First we need some recursive representation of an expression hierarchy. Second we need some way of defining types. I've chosen an enum representation. You can choose what you prefer.</p>
+            <p><code><pre>enum Expr {
+    Number(i64),
+    Add(Box<Expr>, Box<Expr>)
+}
+
+enum Type {
+    TNumber
+}</pre></code></p>
+            <h2>Constraint Generation</h2>
+            <p>Constraints are equations which operate on types. This sounds complicated but equals is the only operator. Generating a constraint implies "this type is equal to that type". The job of a constraint generation algorithm is to recursively walk an AST and assert "T1 == T2". If the two types are not equal the expression does not "unify" and a type error is returned.</p>
+            <p>Let's define a type signature for our constraint generation function to get started.</p>
+            <p><code><pre>fn generate_constraints(expr: &Expr) -> (Type, Vec&lt;(Type, Type)&gt;)</pre></code></p>
+            <p>We take an expression and we return a type and a vector of type doubles (the constraints). The type we return is the prinicipal type of the expression. The constraints we return constrain that principal type. The principal type is also known as the expression's "most general" type.</p>
+            <p>Okay let's generate constraints for our Number expression:</p>
+            <p><code><pre>match expr {
+    Expr::Number(_) => (Type::TNumber, vec![])
+}</pre></code></p>
+            <p>The return type of the Number expression is TNumber and it generates no constraints. We hard code literals to their type. There's nothing to infer. There are no constraints to solve. A number's most general type is just a number.</p>
+            <p>TNumber is a type but its a certain kind of type. Its a monomorphic type. Mono meaning its only one thing. Its not a number and a string. Its just a number. We'll see polymorphic types later but for now just know that we are only operating on monomorphic types and that makes the algorithm much easier.</p>
+            <p>Next, we'll generate constraints for the addition expression. This is another hard coded type but it will demonstrate the constraint generation process.</p>
+            <p><code><pre>Expr::Add(left, right) => {
+    let (t1, mut cs1) = generate_constraints(left);
+    let (t2, mut cs2) = generate_constraints(right);
+    
+    let mut constraints: Vec&lt;(Type, Type)&gt; = vec![];
+    constraints.append(&mut cs1);
+    constraints.append(&mut cs2);
+    constraints.push((t1, Type::TNumber));
+    constraints.push((t2, Type::TNumber));
+
+    (Type::TNumber, constraints)
+}</pre></code></p>
+            <p>Expressions are trees. We need to choose which branch to evaluate first. We picked left but we could have picked right.</p>
+            <p>After evaluating both branches we combine the constraints from both into a single vector and generate a couple more constraints. The addition expression requires its arguments are number types. It pushes that constraint into the list of constraints generated for this function. If you passed a string as the first argument the constraint solver should tell you that a string can not be used in the addition expression.</p>
+            <p>Finally we return the constraints and hard code the fact that addition always returns a number. Not every function can be hard coded but this one can be.</p>
+            <h2>Solving Constraints</h2>
+            <p>A constraint solver is even easier than a constraint generator (at least for now). We iterate over the constraints and check that they match. If they don't then we raise an error. What could be simpler?</p>
+            <p><code><pre>for (c1, c2) in constraints {
+    if c1 != c2 {
+        panic!("How could you have possibly messed this up?")
+    }
+}</pre></code></p>
+            <h2>If Expressions</h2>
+            <p>If expressions contain three subexpressions. The "condition" expression, the "then" expression, and the "else" expression. Alternatively referred to as "consequence" and "alternative".</p>
+            <p><code><pre>If(Box&lt;Expr&gt;, Box&lt;Expr&gt;, Box&lt;Expr&gt;)</pre></code></p>
+            <p>The if expression has two rules in our language. First, "then" and "else" expressions must have the same type. Second, the "condition" expression must be a boolean type.</p>
+            <p>Let's add a new boolean type to our Type enumeration.</p>
+            <p><code><pre>enum Type {
+    TNumber,
+    TBoolean
+}</pre></code></p>
+            <p>Next we generate constraints for each of the three subexpressions, merge their constraints, apply some of our own constraints, and return a type.</p>
+            <p><code><pre>Expr::If((cond, then, els_)) => {
+    let t = tygen.fresh();
+
+    let (tcond, mut c1) = generate_constraints(cond);
+    let (tthen, mut c2) = generate_constraints(then);
+    let (telse, mut c3) = generate_constraints(els_);
+
+    let mut constraints: Vec&lt;(Type, Type)&gt; = vec![];
+    constraints.append(&mut c1);
+    constraints.append(&mut c2);
+    constraints.append(&mut c3);
+
+    constraints.push((Type::TBoolean, tcond));
+    constraints.push((t.clone(), tthen));
+    constraints.push((t.clone(), telse));
+
+    (t, constraints)
+}</pre></code></p>
+            <p>The process of generating constraints for if expressions mostly mirrors addition. Where it differs is in the generation of a fresh type variable. Fresh type variables are meaningless placeholders. They do nothing except occupy space until its time until unification.</p>
+            <p>The reason we use a fresh type variable, rather than asserting the "then" and "else" conditions equal each other explicitly, is so we can find the most general type of the expression. Presently this distinction in our program has no value but it will have some value later.</p>
+            <p>Let's update our implementation to support fresh type variable generation.</p>
+            <p><code><pre>fn generate_constraints(expr: &Expr, tygen: &mut TypeGen) -> (Type, Vec<(Type, Type)>)</pre></code>
+            </p>
+            <p>Add a new Type member "TVariable":</p>
+            <p><code><pre>enum Type {
+    TNumber,
+    TBoolean,
+    TVariable(usize)
+}</pre></code></p>
+            <p>And add a new type "TypeGen":</p>
+            <p><code><pre>struct TypeGen(usize);
+
+impl TypeGen {
+    fn new() -> Self {
+        TypeGen(0)
+    }
+
+    fn fresh(&mut self) -> Type {
+        self.0 += 1;
+        Type::TVariable(self.0)
+    }
+}</pre></code></p>
+            <footer>
+                <p>
+                    <a href="https://github.com/cma256/cma256.github.io/issues/4">Leave a comment</a> | 
+                    <a href="../index.html">Return Home</a>
+                </p>
+            </footer>
+        </article>
+    </main>
+</body>
+</html>
