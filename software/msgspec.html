@@ -21,7 +21,7 @@
             <p>Msgspec is a very pleasant library to use. Define a type and go. For my case, I essentially copy-pasted the RRWeb types from the Typescript source library and converted them to Python types. After applying a few msgspec-specific requirements to the schema I was rewarded with a performant RRWeb deserializer.</p>
             <p>Optimizing deserilaization was as easy as commenting out (or removing) fields I did not care about. I did not have a long tail of debugging problems. Every issue I had with msgspec was caught at "compile-time". By which I mean the program would fail because it was not valid Python. Once Python was happy, the deserializer worked immediately on a large, extremely complex, and recursive data type.</p>
             <h2>Conclusion</h2>
-            <p>Msgspec is powered by twenty-two thousand lines of C code exposed through a radically simple interface. I have not encountered a library which executes so perfectly and delivers so succintly on its promise.</p>
+            <p>Msgspec is powered by twenty-two thousand lines of C code exposed through a declarative, type-driven interface. It delivers succintly on its promise.</p>
             <footer>
                 <p>
                     <a href="https://github.com/cma256/cma256.github.io/issues/4">Leave a comment</a> | 
