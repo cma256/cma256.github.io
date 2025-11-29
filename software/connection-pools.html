@@ -17,10 +17,8 @@
             <p>The answer is <i>I don't know</i>. It depends on the service you're contacting. But! Whatever the answer may be, the solution has nothing to do with the size of your connection pool (at least in Python if you're using urllib3 or a derivative library).</p>
             <p>A connection pool will allow you to re-use connections that have already been established for each request that follows the first. This is an optimization not validation. There is nothing preventing you from creating a new connection if every connection in the pool has been claimed. You can prove this by setting your pool-size to zero and making a request using it. The connection won't be retained for re-use but you're free to make that request anyway.</p>
             <p>If you want to enforce a connection limit in your application you can do so by setting <a href="https://urllib3.readthedocs.io/en/stable/reference/urllib3.connectionpool.html#urllib3.HTTPConnectionPool">block=True</a> in your pool definition. Setting the pool-size to one with block set to true will make the program sequential regardless of the number of threads used.</p>
-            <p>I found this out today and it surprised me. I've been using connection pools for more than a decade and I've only now discovered this behavior. It makes me wonder; is this a me-problem or are connection pools not well-named? Is a non-blocking connection pool better described as a connection cache? I don't know but now I wonder what else I've misunderstood about the world.</p>
             <footer>
                 <p>
-                    <a href="https://github.com/cma256/cma256.github.io/issues/1">Leave a comment</a> | 
                     <a href="../index.html">Return Home</a>
                 </p>
             </footer>
