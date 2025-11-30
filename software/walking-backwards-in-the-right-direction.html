@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../style.css">
+    <title>Walking Backwards in the Right Direction</title>
+</head>
+<body>
+    <main>
+        <article>
+            <header>
+                <h1>Walking Backwards in the Right Direction</h1>
+                <p>Published on Sunday, November 30, 2025</p>
+            </header>
+            <p>Test-driven development is a software metholodogy that advocates for writing tests before writing the implementation it covers.</p>
+            <p>Alan Kay is not (as far as I'm aware) a TDD evangelist. In a recent talk he presented the maxim "Design, Simulate, Build" as a guide to building quality software. The ordering being particularly important. Design first, build last, simulate in between.</p>
+            <p>Every commerical software project has at least two implementations. The production implementation and the test-suite's implementation. That test-suite implementation can be considered a simulation. So, the question is, is there a link between these two ideas?</p>
+            <p>I think so. At least directionally. But the way TDD approaches the problem is, in my view, backwards. TDD subordinates the design step. It doesn't intend to but it does constrain the degrees of freedom a developer can express in the pursuit of solving a problem.</p>
+            <p>In my previous post on <a href="software/deferred-decision-making.html">Deferred Decision Making</a> (DDM), I provided a technique for building software in the presence of unknowns. This technique also helpfully provides a framework for simulating code prior to the creation of a production implementation. I believe this methodology of building software is tangential but superior to TDD.</p>
+            <p>One complaint I have about TDD is its tendency, I believe, to ossify decisions. Whereas in DDM decisions are deferred until the last possible moment, TDD doesn't provide any guard-rails to prevent a person from encoding a great many choices into their production and test implementations. And becuase of TDD's iterative nature, the engineer may not notice the accumulated "damage" from their <i>choices</i>.</p>
+            <p>Of course there's nothing incompatible about DDM and TDD. You can do both together. However, TDD will ossify function signatures before you've fully understood the problem being solved. Its in this way I believe the "design" phase of Alan Kay's maxim is subordinated and the promise of "iterative" developement made by TDD is not forthcoming. Iteration is slowed by the costant need to refactor test coverage. Most of our iteration will be spents in the "tests" folder of our project and not in the "src" folder (which is where we actually want to iterate).</p>
+            <footer>
+                <p>
+                    <a href="../index.html">Return Home</a>
+                </p>
+            </footer>
+        </article>
+    </main>
+</body>
+</html>
