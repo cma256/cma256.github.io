@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../style.css">
+    <title>A Binary RRWeb Encoding Format</title>
+</head>
+<body>
+    <main>
+        <article>
+            <header>
+                <h1>A Binary RRWeb Encoding Format</h1>
+                <p>Published on Sunday, November 30, 2025</p>
+            </header>
+            <p>RRWeb (Record, Replay Web) is a tool for recording and replaying a users interactions on a website. It has a protocol definition which is, typically, serialized to JSON. My employer sells an RRWeb derivative product and, as a backend engineer, I find myself thinking about the protocol quite a bit. Particularly its size which is significant and can cause strain when websites are particularly large and contain lots of repetitive content or events.</p>
+            <p>For these reasons I began thinking about ways to minimize the size of the payloads.</p>
+            <h2>Initial Self-Describing Implementation</h2>
+            <p>I won't dwell too long on this since its fairly common. I used tag bytes to describe the data that follows. These tags can indicate a complex, nested object or a simple, fixed-size integer follows. Integer encoding was done using LEB128. Floats were encoded using 4 bytes of precision (32-bit). Strings are variable length and prefixed with a length value (which is itself LEB128 encoded). Arrays are tagged and have a length value. Objects are the same as arrays but have the expectation that there are two distinct encoded objects per entry (the key and the value). Boolean, null, and undefined values are encoded into the tag byte and do not need a value byte to follow.</p>
+            <p>The results of this encoding format are similar to serializing with msgpack. The byte size is reduced by about 10%.</p>
+            <h2>Specializing</h2>
+            <p>We can extend our type tag to include specialized types. Particularly, we're going to intern string values and store an "INTERNED_STRING" tag type and a "STRING_POINTER" tag type. Interned strings are special because we're going to extract every string from the payload, de-duplicate it, and replace it with a pointer (an integer representing an index in an array). The serializer will move these interned string types to the front of the message so that when deserializing you can always translate a string pointer to a string (no index errors).</p>
+            <p>By interning strings we can significantly reduce payload size. A website like Reddit with lots of repetitive content will see its total byte size reduced by two-thirds or 66%. A website with less repetitive content, like the New York Times, will see its byte size reduced by half.</p>
+            <p>We can optimize the format further by adding type tags which represent complex types (e.g. a DOM node or a click event) and type tags which encode more granular information such as "array[float]" or "map[string, string]".</p>
+            <p>Encoding as a typed array or typed map means we can drop type information for each entry which can save a significant amount of data if enough repititions are encountered. For specialized types such as "DOM_NODE" our deserializer will expect integer, integer, float, and string. These heterogenous types rely on a known ordering in order to deserialize. If the ordering is ever invalidated then the deserializer can not function.</p>
+            <p>This moves us away from a world of self-description and into a world of specialized encoders and decoders. Versioning and backwards and forwards compatibilty become very important in this domain. There's a subtlety to format design that ensures long-term happiness.</p>
+            <p>I've glossed over this but there were lots of different types which received a specialized encoding. It is not a trivial amount of work and requires some amount of "hemming and hawing" for each type to keep yourself from making mistakes.</p>
+            <p>These changes further reduced payload size. Websites such as Reddit were one-fifth as large (an 80% reduction) whereas websites such as the New York Times were unaffected.</p>
+            <h2>Miscellaneous Changes</h2>
+            <p>There was one change in particular that failed which really disappointed me. Timestamps are set for each RRWeb event. They're 64-bit so take up a decent amount of room. The RRWeb player can only render to the screen as frequently as the user's screen refreshes. For a 60hz monitor this is roughly 16 milliseconds. For web content you can imagine this is overkill and 30hz or 15hz refresh-rate would be sufficient for a satisfactory user experience.</p>
+            <p>Events then could be encoded without timestamps and instead bucketed into a "frame" which is assigned a single timestamp which is a delta from the previous timestamp. Smaller and fewer timestamps should mean large data savings.</p>
+            <p>This, however, did not work out. There was basically zero-difference. Events were too sparse and not in great enough quantity to meaningfully impact byte size. I unfortunately had to abandon it. What a shame.</p>
+            <h2>Conclusion</h2>
+            <p>Unmentioned so far is the delta between the formats when compressed. Its roughly a 10-20% savings. However, compression and decompression are significantly faster and require significantly less CPU and memory.</p>
+            <p>Also unmentioned is the fact that this new format is streamable. You can begin playing the stream prior to receiving the whole message similar to YouTube. This is a cool feature that could improve the responsiveness of the RRWeb player but I didn't implement a player so it remains untested.</p>
+            <p>Also also unmentioned were sparse arrays which were used to encode objects with optional fields. These took inspiration from hash array mapped tries. They had an impact on total byte size but it was not significant enough to mention.</p>
+            <p>Last honorable mention. Floats were encoded using four-bytes by default. Select types could have their precision reduced without meaningful impacts to the viewer's experience. Again small impact but could have been larger given the right input data.</p>
+            <p>All in all, a fun project.</p>
+            <footer>
+                <p><a href="../index.html">Return Home</a></p>
+            </footer>
+        </article>
+    </main>
+</body>
+</html>
