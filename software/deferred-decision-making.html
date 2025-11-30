@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../style.css">
+    <title>Deferred Decision Making</title>
+</head>
+<body>
+    <main>
+        <article>
+            <header>
+                <h1>Deferred Decision Making</h1>
+                <p>Published on Sunday, November 30, 2025</p>
+            </header>
+            <p>Stop me if this sounds familiar. You have an idea for an interesting software project. You start working on it but you're blocked. You need to make a decision about something that is incidentally related to the problem you're trying to solve. If you're using web technologies you may be trying to figure out what web framework or ORM to use. You're not sure what to do and you're afraid to commit so early in the project's life. How do we proceed?</p>
+            <p>Defer the choice.</p>
+            <p>Suppose your project is an authentication system. You need to query a database to find a token. Except, no, you don't. Instead define a contract and adopt that contract in your implementation. That might look something like this:</p>
+            <p><code><pre>def authenticate[UserId](
+    token: str,
+    fetch_token_row: Callable[[str], TokenRow[UserId]]
+) -> UserId:
+    ...</pre></code></p>
+            <p>We have a function which accepts a token (probably extracted from some HTTP headers) and a higher-order function "fetch_token_row". "fetch_token_row" accepts the token as its first argument and returns some type which satisfies the needs of the "authentication" function. If the "authentication" function needs "TokenRow" to contain the field "foo" then the "TokenRow" definition will contain a "foo" field which an implementer must satisfy. The function also defines a generic return-type. We don't yet know if we're going to use strings, integers, UUIDs, bytes, or something else to represent unique user identifiers. So we defer that decision as well by making the function and "TokenRow" generic over "UserId".</p>
+            <p>With this implementation we've deferred several unknowns:</p>
+            <ul>
+                <li>We don't need to know what web framework we'll use.</li>
+                <li>We don't need to know what database we'll use.</li>
+                <li>We don't need to know what ORM we'll use.</li>
+                <li>We don't need to know what the table structure is.</li>
+                <li>We don't need to know what a "UserId" is.</li>
+            </ul>
+            <p>Not only do we not need to know but we don't <i>want</i> to know. Because <i>knowing</i> (in this context) is the same as coupling. Coupling is a source of complexity and is a drain on developer velocity.</p>
+            <p>Deferring decision making also means our test suite can define very simple, in-memory mocks which can fully unit-test all of the branches contained within the "authentication" function's body. We can <i>simulate</i> a system without fully defining it.</p>
+            <p>This is incredibly useful for prototyping, for isolating dependencies, for improving test coverage, for fuzzing, and, I'm sure, more.</p>
+            <footer>
+                <p>
+                    <a href="../index.html">Return Home</a>
+                </p>
+            </footer>
+        </article>
+    </main>
+</body>
+</html>
