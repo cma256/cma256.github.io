@@ -1,0 +1,15 @@
+
+
+- Rich Hickey talks about place oriented programming.
+- Its rude to paraphrase and he means a lot of things with this statement but put simply its a description of the problems state introduces in a program. You should watch his talk. He's much more interesting than me.
+- In my case I mean place-oriented programming as not so much an architectural decision but a fact of the world.
+    - The user data exists here in the user table.
+    - I didn't get to pick that architecture but I am required to operate within it.
+    - Place then becomes the accumulated decisions people have made in a software project.
+    - Decisions that are not obvious.
+    - Accepting contracts (higher order functions) in your function signature means you can make progress in the presence of uncertainty.
+    - "I need to fetch a user" is a declaration of intent.
+    - "SELECT * FROM users" is a concrete implementation detail that can be determined later.
+    - It is not material to the logical function of the program.
+    - Though it may have operational implications that you will need to evaluate later.
+        - As do all interactions with the world.

@@ -1,0 +1,40 @@
+# Introduction
+
+# Core Ideas
+
+1. design your interfaces
+    - step 7 of the design portion.
+    - its also step 1 of the simulation portion.
+    - design and simulation are continuous not discreet. Every step of the design phase could be considered a tiny simulation. even if only in your mind.
+    - here we have the explicit goal of simulating a system to test our assumptions.
+    - show code examples of simulate-able logic.
+
+2. You first Simulation (the test suite)
+    - You test suite should run in less than 10 seconds.
+    - It should feature hundreds of tests which cover every conditional path.
+    - You should be able to test your full flow end-to-end.
+
+3. Your Second Simulation (End To End)
+    - Everything's mocked so disable auth and return mock data.
+    - Play around with latency. Add sleep calls.
+    - If you have a ready-built client:
+        - Does the product feel good at 100ms, 1,000ms, 10,000 ms?
+            - Now you know something about your tolerances.
+            - This can inform your non-functional requirements and bring you back to the design stage.
+        - If consistency was relaxed how jarring is it when the data changes between refreshes?
+            - Return a mocked, older state on refresh.
+            - If it sucks maybe consistency is more important than you thought!
+
+4. Your third, fourth, fifth, and so on simulations
+    - Performance testing.
+    - How does the software behave when this service is slow or unavailable.
+    - How hard can I push before it begins to break.
+    - I highly recommend introducing real system components into your simulation.
+    - We want to stress test real software.
+        - Start a Kafka consumer or a RabbitMQ broker.
+    - But don't stress test every system at once!
+        - We want to control the unknown as much as possible so we can understand discrete components of our system.
+    - Your final simulation is production.
+        - It will tell you how a system behaves in its totality.
+
+# Conclusion

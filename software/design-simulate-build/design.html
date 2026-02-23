@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../../style.css">
+    <title>Design in Practice</title>
+</head>
+<body>
+    <main>
+        <article>
+            <header>
+                <h1>Design in Practice</h1>
+                <p>Published on Sunday, February 22, 2026 - 9:00 PM</p>
+            </header>
+            <h1>Introduction</h1>
+            <sub>TODO: write an interesting hook here. Wait... can you see this?!</sub>
+            <p>Each topic I will discuss is optional for you to pursue. If your requirement is to print "hello, world" you don't need to design anything. Use your best judgement to determine when certain aspects of the design process can be safely ignored.</p>
+            <p>Design is adjacent to planning. There are many points in this blog where I could have veered off into a discussion of planning doctrines and the science of project management. I won't do that here. However, I will say a well-designed system is not the only outcome of the design process. Another outcome is a <i>plan</i>. There are logistics associated with accomplishing any task. <i>Design</i> informs you of the task and the <i>plan</i> informs stakeholders of resource requirements.</p>
+            <p>This blog is informed by my experiences as a back-end engineer for business applications. This advice may or may not apply to other domains of software engineering.</p>
+            <h1>Core Ideas</h1>
+            <h2>Gather Functional Requirements</h2>
+            <blockquote cite="https://en.wikipedia.org/wiki/Functional_requirement">
+                <p>In software engineering and systems engineering, a functional requirement defines a function of a system or its component, where a function is described as a summary (or specification or statement) of behavior between inputs and outputs.</p>
+                <cite>Wikipedia</cite>
+            </blockquote>
+            <p>Functional requirements are what a program does. They are not a description of how a program should accomplish it. For example, given the task to create an identity system some functional requirements might be: user registration, reset passwords, and login users.</p>
+            <p>When designing any software project you should collect these requirements and document them (if they aren't already). Collecting them, in text, allows others to check your work. It ensures that your understanding of the project aligns with other stakeholders in the business. They might chime in and say "don't forget about logging out users" or they might say "we don't need user registration" or they might ask a question "why do we need to allow users to reset their password".</p>
+            <p>It's rare you'll hear a project proposal and understand immediately every intention that the requester had. So don't assume. Spend a few minutes writing down the requirements as your understand them and share it around.</p>
+            <p>There's a hidden benefit here besides mutual understanding. You may, after analyzing the requirements, realize the organization does not have the capability to execute on the requirements. Or you may realize the requirements are mutually contradictory. These are really great things to find out <i>early</i>. You either fix them early at very little cost or you abandon the project at very little cost.</p>
+            <h2>Gather Non-Functional Requirements</h2>
+            <blockquote cite="https://en.wikipedia.org/wiki/Non-functional_requirement">
+                <p>In software engineering and systems engineering, a non-functional requirement (NFR) is a requirement that specifies criteria that can be used to judge the operation of a system, rather than specific behaviors. The plan for implementing non-functional requirements is detailed in the system architecture, because they are usually architecturally significant requirements.</p>
+                <cite>Wikipedia</cite>
+            </blockquote>
+            <p>Non-functional requirements are more technical in nature than functional requirements. When we document non-functional requirements what we're trying to do is prepare ourselves for system design work. If we know, for example, that our project requires low latency to be competitive then we know a cron job is not sufficient to solve the problem. Documenting non-functional requirements acts as a funnel for our architectural design. It progressively cleaves off large portions of the software world as we add more requirements.</p>
+            <p>Some questions you can ask to find non-functional requirements are:</p>
+            <ol>
+                <li>What are my latency targets?</li>
+                <li>What is my expected average message volume?</li>
+                <li>What is my expected average message size?</li>
+                <li>What is my consistency model?</li>
+                <li>What are my availability requirements?</li>
+                <li>Can we tolerate network partitions?</li>
+                <li>What are the SLAs on offer?</li>
+                <li>Do I have any legal or data-residency requirements?</li>
+            </ol>
+            <p>Here we hit more exit opportunities. Can we fulfill our non-functional requirements? For example, if data-residency is a legal requirement but we can't deliver it then we can exit the project early. If requirements have been imposed on us which are impossible to accommodate (for example satisfying all three properties of the CAP theorem) then we can exit the project early or otherwise request a loosening of the requirements.</p>
+            <p>Documenting requirements is a tactic for minimizing information loss. When we communicate informally (verbally or otherwise) we don't provide the full resolution a given problem requires to be solved. Its the engineers job to document, to the best of their abilities, the project's requirements. The most successful projects have a foundation of mutual understanding between all interested parties.</p>
+            <p>After gathering your requirements you can start thinking about the data you need to send and receive. Your inputs and outputs. At this stage we're not trying to design by contract. We're trying to understand wha</p>
+            <h2>Define a High Level System Architecture</h2>
+            <h3>Define Your Core Types</h3>
+            <p>Before drawing our system's architecture diagram, we want to have an approximate idea of what our data looks like. It doesn't really matter how much effort you put into this step or what level of detail you provide. The main questions we're trying to answer at this stage is, roughly, how large are the messages I'll send and receive (to the nearest order of magnitude) and who has what data.</p>
+            <p>For example, if you expect to receive a message with a user-id but you need a username to complete your message processing logic then you'll need to fetch that data from somewhere else. That's a connection on our architecture diagram. If you expect to receive very small messages you might structure your architecture differently than if you receive very large messages.</p>
+            <p>Types will be defined in greater detail in future sections.</p>
+            <h3>Draw an Architecture Diagram</h3>
+            <p>Using your knowledge of the problem and with an understanding of your organization's capabilities in mind, draw an architecture diagram which will satisfy the problem. You can use excalidraw or mermaid or whatever you're comfortable with. Drawing out the architecture provides a great visual summary of your system and allows other parts of your brain to contribute the design process (particularly the visual areas).</p>
+            <p>Once you have a diagram, share it around with a short explanation of the problem you're solving. Consider including your functional and non-functional requirements in bulleted form to quickly bring others up to speed. If you're not the subject matter expert in your organization, consider asking one to review your work. If you <i>are</i> the subject matter expert in your organization consider letting more junior employees review as a mentorship opportunity.</p>
+            <p>We've found another exit opportunity. Is our architecture diagram utterly insane? Does it look like a nightmare to maintain? Is it going to consume huge amounts of already scarce engineering resources? Now is the time to bring these concerns up. The opportunity cost of a project is not arbitrary. You and your organization only has so much time in the day. You have to be certain you're spending it effectively. A visual architecture diagram is a great way to bring non-technical people into the cost analysis process.</p>
+
+            <!-- $$\      $$\ $$$$$$\ $$$$$$$\  $$$$$$$$\  -->
+            <!-- $$ | $\  $$ |\_$$  _|$$  __$$\ $$  _____| -->
+            <!-- $$ |$$$\ $$ |  $$ |  $$ |  $$ |$$ |       -->
+            <!-- $$ $$ $$\$$ |  $$ |  $$$$$$$  |$$$$$\     -->
+            <!-- $$$$  _$$$$ |  $$ |  $$  __$$< $$  __|    -->
+            <!-- $$$  / \$$$ |  $$ |  $$ |  $$ |$$ |       -->
+            <!-- $$  /   \$$ |$$$$$$\ $$ |  $$ |$$$$$$$$\  -->
+            <!-- \__/     \__|\______|\__|  \__|\________| -->
+            <h2>Define Your Wire Protocol Format</h2>
+            <p>At this stage we need to start thinking about how clients and servers are going to interact with one another. They'll communicate across a network boundary and this is colloquially referred to as "the wire". When communicating across the wire we lose a lot of the benefits programming languages provide (such as types and type checkers and compilers). To compensate we need to be thoughtful in our designs and we need to adopt a few techniques for standardizing this inter-machine communication pattern.</p>
+            <p>It's here that we'll form our first "contracts". "I promise to return X if you promise to send Y". It doesn't make sense to talk about designing wire formats in the absence of any standards so I will now introduce two standards which I prefer to use. API Blueprint and JSONAPI. Both of which I will discuss below.</p>
+
+            <!--  $$$$$$\  $$$$$$$\ $$$$$$\       $$$$$$$\  $$\                                         $$\            $$\      -->
+            <!-- $$  __$$\ $$  __$$\\_$$  _|      $$  __$$\ $$ |                                        \__|           $$ |     -->
+            <!-- $$ /  $$ |$$ |  $$ | $$ |        $$ |  $$ |$$ |$$\   $$\  $$$$$$\   $$$$$$\   $$$$$$\  $$\ $$$$$$$\ $$$$$$\    -->
+            <!-- $$$$$$$$ |$$$$$$$  | $$ |        $$$$$$$\ |$$ |$$ |  $$ |$$  __$$\ $$  __$$\ $$  __$$\ $$ |$$  __$$\\_$$  _|   -->
+            <!-- $$  __$$ |$$  ____/  $$ |        $$  __$$\ $$ |$$ |  $$ |$$$$$$$$ |$$ /  $$ |$$ |  \__|$$ |$$ |  $$ | $$ |     -->
+            <!-- $$ |  $$ |$$ |       $$ |        $$ |  $$ |$$ |$$ |  $$ |$$   ____|$$ |  $$ |$$ |      $$ |$$ |  $$ | $$ |$$\  -->
+            <!-- $$ |  $$ |$$ |     $$$$$$\       $$$$$$$  |$$ |\$$$$$$  |\$$$$$$$\ $$$$$$$  |$$ |      $$ |$$ |  $$ | \$$$$  | -->
+            <!-- \__|  \__|\__|     \______|      \_______/ \__| \______/  \_______|$$  ____/ \__|      \__|\__|  \__|  \____/  -->
+                                                                            <!-- $$ |  -->
+                                                                            <!-- $$ |  -->
+                                                                            <!-- \__|  -->
+            <h3>API Blueprints</h3>
+            <p>An <a href="https://apiblueprint.org/">API Blueprint</a> is a high-level, human-readable documentation and design format for describing RESTful APIs. It uses a Markdown-based syntax to define the structure, endpoints, requests, and responses of an API. Because of its plain-text nature, API blueprints can easily accommodate contributions from non-technical individuals. It enables non-technical stakeholders to meaningfully contribute much later in the design process.</p>
+            <p>An API blueprint embodies the 'design by contract' philosophy. It describes what requests can be made, what parameters resources accept, and what responses to expect. Crucially this contract is defined <i>prior</i> to writing any code. This early design step makes the later development processes 'non-blocking' since each engineer can reference the blueprint independently without coordinating with engineers working in other domains. Without a blueprint, engineers often communicate API details through informal channels, such as a Slack message. These informal channels are error-prone, go out of date quickly, and leave a lot of room for interpretation. A blueprint, on the contrary, provides a precise, structured specification that answers every question an engineer might have: "what is the exact URL?", "what HTTP method does it use?", "what fields are required in the request body?", "what does the response look like on success?", "what does it look like on error?", "what are the possible status codes?". Because this is written in a structured format there is no ambiguity. Every engineer is reading the same document and the same definitions, which dramatically reduces communication requirements.</p>
+            <p>Finally, once an API blueprint has outlived its life as a development aid it continues its life as documentation. Future consumers will have every detail you had when you initially developed the API.</p>
+            <p>It doesn't matter how strictly you adhere to the API blueprint specification. What matters is that some useful fraction of it is included in your design process.</p>
+            <p>An example API blueprint is pasted below for reference.</p>
+            <code><pre>FORMAT: 1A
+HOST: https://api.example.com
+
+# My API
+
+## Users [/users]
+
+### List All Users [GET]
+
++ Response 200 (application/json)
+
+        [
+            { "id": 1, "name": "Foo" },
+            { "id": 2, "name": "Bar" }
+        ]
+
+### Create a User [POST]
+
++ Request (application/json)
+
+        { "name": "Baz" }
+
++ Response 201 (application/json)
+
+        { "id": 3, "name": "Baz" }</pre></code>
+
+            <!--    $$$$$\  $$$$$$\   $$$$$$\  $$\   $$\  $$$$$$\  $$$$$$$\ $$$$$$\  -->
+            <!--    \__$$ |$$  __$$\ $$  __$$\ $$$\  $$ |$$  __$$\ $$  __$$\\_$$  _| -->
+            <!--       $$ |$$ /  \__|$$ /  $$ |$$$$\ $$ |$$ /  $$ |$$ |  $$ | $$ |   -->
+            <!--       $$ |\$$$$$$\  $$ |  $$ |$$ $$\$$ |$$$$$$$$ |$$$$$$$  | $$ |   -->
+            <!-- $$\   $$ | \____$$\ $$ |  $$ |$$ \$$$$ |$$  __$$ |$$  ____/  $$ |   -->
+            <!-- $$ |  $$ |$$\   $$ |$$ |  $$ |$$ |\$$$ |$$ |  $$ |$$ |       $$ |   -->
+            <!-- \$$$$$$  |\$$$$$$  | $$$$$$  |$$ | \$$ |$$ |  $$ |$$ |     $$$$$$\  -->
+            <!--  \______/  \______/  \______/ \__|  \__|\__|  \__|\__|     \______| -->
+            <h3>JSON API</h3>
+            <p>JSONAPI is a specification for how APIs should structure their JSON requests and responses. It's a standard that aims to reduce cross-talk during API design by defining conventions for how resources, relationships, pagination, filtering, sorting, and error handling should work.</p>
+            <blockquote cite="https://jsonapi.org/">
+                <p>By following shared conventions, you can increase productivity, take advantage of generalized tooling and best practices.</p>
+                <cite>jsonapi.org</cite>
+            </blockquote>
+            <p>It doesn't matter how strictly you adhere to the specification. What matters is that you are <i>consistent</i> in the portions you do follow. Ambiguity is complexity and it will consume a significant amount of engineering resources if you don't make an effort to reduce it. Have a standard and follow it.</p>
+            <p>An example of a JSONAPI formatted response is pasted below for reference.</p>
+            <code><pre>{
+  "data": {
+    "type": "articles",
+    "id": "1",
+    "attributes": {
+      "title": "My Post"
+    },
+    "relationships": {
+      "author": {
+        "data": { "type": "people", "id": "42" }
+      }
+    }
+  },
+  "included": [
+    {
+      "type": "people",
+      "id": "42",
+      "attributes": { "name": "Jane" }
+    }
+  ]
+}</pre></code>
+
+            <!-- $$\       $$$$$$\   $$$$$$\  $$$$$$\  $$$$$$\   -->
+            <!-- $$ |     $$  __$$\ $$  __$$\ \_$$  _|$$  __$$\  -->
+            <!-- $$ |     $$ /  $$ |$$ /  \__|  $$ |  $$ /  \__| -->
+            <!-- $$ |     $$ |  $$ |$$ |$$$$\   $$ |  $$ |       -->
+            <!-- $$ |     $$ |  $$ |$$ |\_$$ |  $$ |  $$ |       -->
+            <!-- $$ |     $$ |  $$ |$$ |  $$ |  $$ |  $$ |  $$\  -->
+            <!-- $$$$$$$$\ $$$$$$  |\$$$$$$  |$$$$$$\ \$$$$$$  | -->
+            <!-- \________|\______/  \______/ \______| \______/  -->
+            <h2>Define Your Logic</h2>
+            <p>In the previous section I discussed the process of defining the communication protocol your system will use. This is a great pattern for system design because it improves communication between human stakeholders. However, some units of work are not worth communicating the details of to humans. As we've worked our way through the design process we've gradually increased the resolution at which we solve a given problem. From a plain, human-language explanation of what we're trying to accomplish to now describing our solution in a machine readable format. Its in this section we abandon communication with other humans and focus on communication with the <i>machine</i>.</p>
+            <p>It's rare, I think, for software engineers to categorize <i>writing code</i> as a stage in the design process. Programming languages are extremely precise in their description of a program and require more mental effort on behalf of the engineer than a human language, such as English, will demand. English, and other human languages, lack the specificity and <i>feedback</i> that a compiler can provide. Bret Victor describes the lack of feedback as "the thoughts we can not think".</p>
+            <blockquote cite="https://www.youtube.com/watch?v=PUv66718DII">
+                <p>[...] To be able to try ideas as you think of them. If there is any delay in that feedback loop, between thinking of something and seeing it, and building on it, then there is this whole world of ideas which will just never be. These are thoughts that we can't think.</p>
+                <cite>Bret Victor - Inventing on Principle</cite>
+            </blockquote>
+            <p>When we write our design in code (rather than in our mind or on paper) we introduce assistants into our thinking process. The compiler, the machine, your development environment will all give you immediate feedback when your ideas conflict with what reality can actually accommodate. They will tell you: <i>you're wrong and you need to change your approach.</i> Seeing written code on a screen will give you a sense of the cost your architecture imposes in terms of lines of code written and in terms of the level of expertise required to understand it.</p>
+            <p>This feedback is critical because it informs our design decisions. But <i>writing</i> the software as a component of <i>designing</i> the software seems to invert the principle of <i>design before building</i>. However, the process of <i>building</i> is more significant than writing code. Ask any engineer who has finished the first "90%" in a few days and the last "10%" in a few weeks. Even so, many common behaviors programmers express when writing code will conflict with the "design first" philosophy. To accommodate this step we need to change the way we write software. We need to be able to iterate on the logic of a program with high precision, at speed, and with minimal interference from the outside world.</p>
+            <p>To accomplish this we can lean on two techniques of software engineering: <b>dependency injection</b> and <b>design by contract</b>. Dependency injections absolves us of all responsibility to interact with the outside world. We can focus purely on the logic of our program. Design by contract enables the hyper-specificity required to model the program. Consider this function:</p>
+            <code><pre>def create_opaque_token[UserId](
+    grant_type: str,
+    username: str,
+    password: str,
+    scope: str,
+    fetch_user_from_username: Callable[[str], UserLoginMeta[UserId] | None],
+    store_token: Callable[[BearerTokenRow[UserId]], None],
+    test_password: TestPassword = test_password,
+    access_token_generator: Callable[[], str] = DEFAULT_ACCESS_TOKEN_GENERATOR,
+    refresh_token_generator: Callable[[], str] = DEFAULT_REFRESH_TOKEN_GENERATOR,
+    get_current_datetime: Callable[[], datetime] = DEFAULT_DATETIME_GETTER,
+    access_expires_after: timedelta = DEFAULT_ACCESS_TOKEN_EXPIRES_AFTER,
+    refresh_expires_after: timedelta = DEFAULT_REFRESH_TOKEN_EXPIRES_AFTER,
+) -> BearerToken:
+    if grant_type != "password":
+        raise IdentityError(code="invalid_grant")
+
+    user = fetch_user_from_username(username)
+    if not user:
+        raise IdentityError(code="token_user_not_found")
+    if not test_password(password, user["hashed_password"]):
+        raise IdentityError(code="token_passwords_did_not_match")
+
+    access_token = access_token_generator()
+    refresh_token = refresh_token_generator()
+
+    iat = get_current_datetime()
+
+    store_token(
+        {
+            "access_token": hashlib.sha256(access_token.encode()).digest(),
+            "access_expires_at": iat + access_expires_after,
+            "refresh_token": hashlib.sha256(refresh_token.encode()).digest(),
+            "refresh_expires_at": iat + refresh_expires_after,
+            "issued_at": iat,
+            "is_revoked": False,
+            "scopes": scope.split(" "),
+            "user_id": user["id"],
+        }
+    )
+
+    return {
+        "access_token": access_token,
+        "token_type": "Bearer",
+        "expires_in": access_expires_after.seconds,
+        "refresh_token": refresh_token,
+        "scope": scope,
+    }</pre></code>
+            <p>Above I've defined a token issuance program for OAuth2. It's a fairly complex piece of logic. There are a lot of things that need to happen to ensure a user is properly authenticated and a few more things to make sure that the authentication process is secure. This complexity is <i>inherent</i> to the problem. We can't avoid it. During the writing of this function we'll find many places where our initial assumptions were wrong or failed to capture all the possible states this program needs to model. For example, when designing an authentication function you might conceive that a password can be incorrect but not that a user could not be found.</p>
+            <p>What's absent is the <i>incidental</i> complexity a problem like this might introduce. Note the absence of <b>dependencies</b>. There is no web-framework, there is no database, there is no cryptography library, and there is no token generation library. <i>We don't even make an assumption about what type a user's ID would be.</i> But the logic of the program has been implemented in its entirety.</p>
+            <p>With the program in its present state we can fully simulate the token issuance process in our test-suite and in practice. We do not need a database or any other dependency. If we want to test the logic's interaction in a client-server context then this function could be exposed on a temporary (or permanent) endpoint.</p>
+            <p>This particular program didn't call for it but what about logs, metrics, and other <i>maintenance</i>-critical but not <i>design</i>-critical properties a program can have? Your non-functional <i>requirements</i> are still <i>requirements</i>. You should write all of it. Accept a metric emitting higher-order function, a log emitting higher-order function, and so on. There's no difficulty in doing it and omitting it means returning to this program later after your mind has already context shifted. <i>Always</i> complete the work that's in front of you in its entirety. Here we're implementing the logic of the program so implement the logic of emitting a log and the logic of emitting a metric.</p>
+            <p>This is great but in the introduction I promised <i>speed</i>. Is this <i>faster</i> to produce than winging it? Yes, its faster. Complexity is multiplicative. Solving the inherent <i>and</i> incidental complexity <i>at once</i> is significantly more difficult than solving them separately. There are many more lines of code to keep track of, many more problems to consider, and many more context switches from logic to implementation details. Often the speed improvements from winging-it come from an accidental relaxation of the requirements stemming from cognitive overload. Not considered by the winging-it style, is the fact that it takes more effort to see a completed program and therefore <i>you can not bail out as early</i> if the program can not be made to work.</p>
+            <p>Okay but what about <i>other</i> design systems? In the absence of a specific example I can't tell you. But what I can tell you is if your design is not getting immediate feedback from a trusted, accurate source it will take you significantly longer to find those issues on your own. Type systems, borrow checkers, compilers, and other tools enhance the design process. Designing your programs in Notion forgoes over fifty years of tooling computer scientists have produced for us.</p>
+            <h1>Conclusion</h1>
+            <sub>TODO: write a compelling conclusion here that will make people feel like reading this blog was worth it.</sub>
+            <p>If you learned nothing else from this blog learn this. Resolve ambiguity early. Between yourself and others and yourself and the machine. Do not wait for ambiguity to become a problem. Squash it early.</p>
+            <footer>
+                <p>
+                    <a href="../../index.html">Return Home</a>
+                </p>
+            </footer>
+        </article>
+    </main>
+</body>
+</html>

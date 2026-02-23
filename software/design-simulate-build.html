@@ -15,7 +15,7 @@
             </header>
             <p>"Design, simulate, build" is a mantra for building reliable software. <b>"Design"</b> meaning to think about a problem before you act on it. <b>"Simulate"</b> meaning to build a "scale model" of the thing to validate the design. And <b>"Build"</b> meaning to actually go and build the final product.</p>
             <p>"Design" and "Build" are fairly well known concepts. Engineers perform them to varying degrees of competency but, up to this point, they have been nearly impossible to avoid and so we have all done them.</p>
-            <p>"Simulate" I think will raise some eye brows. Not many people (in the web-dev domain at least) are aware of how to do this. But we do it implicitly when we write test coverage. Test coverage is, after all, a partial simulation of your program. A test-suite, therefore is a fragmented or incomplete simulation of your program. We can do better.</p>
+            <p>"Simulate" I think will raise some eye brows. Not many people (in the web-dev domain at least) are aware of how to do this. But we do it implicitly when we write test coverage. Test coverage is, after all, a partial simulation of your program. A test-suite, therefore is a fragmented or incomplete simulation of your program.</p>
             <p>Consider this. You've been asked by your manager to create an authentication system for your website. Let's take a moment to design a solution to this problem.</p>
             <p><code><pre>1. Accept a username and password.
 2. Look up the user by their username.
@@ -49,6 +49,7 @@
             <p>Most clever of all is it allows us to answer questions (is my design plausible, does my design produce a useful program) without needing to understand databases, file-systems, web frameworks, or cryptography. Indeed the author of this simulation could be a blank slate and may need to learn all of these fields in order to actually <i>build</i> their program. But for now they can make progress and address these challenges piece-meal later.</p>
             <p>Finally, let's (partially) build the software.</p>
             <p><code><pre>def get_user(username: str) -> User | None:
+    # Ignore the SQL injection here.
     result = execute_sql(f"SELECT * FROM users WHERE user = '{username}'")
 
     if result:
@@ -56,7 +57,7 @@
     else:
         return None</pre></code></p>
             <p>Notice the act of building the software is just the process of defining the callbacks requested by the authenticate function. Here I've opted to solve the problem of querying for a user. You can imagine I've solved all the other problems.</p>
-            <p>Notice that this solution is incorrect. We have a SQL injection vulnerability. Notice how solving that problem does not involve unwinding any aspect of the authenticate function. Indeed we can ignore the authenticate function entirely. It is irrelevant to the problem being solved here.</p>
+            <p>The solution presented is incorrect. We have a SQL injection vulnerability. Notice how solving that problem does not involve unwinding any aspect of the authenticate function. Indeed we can ignore the authenticate function entirely. It is irrelevant to the problem being solved here.</p>
             <p>We have our first hint at re-use. Fetching a user is decoupled from our authenticate subroutine. This function can be passed to any subroutine which has a dependency on user data. This, as it turns out, is such a scalable idea that your program can be reduced to a series of reusable, declarative functions. Almost all problems in your software become questions of order and how outputs transform one another.</p>
             <h2>Conclusion</h2>
             <p>Simulation is a meaningful intermediary step that allows you to explore ideas without incurring the cost of fully solving a problem. It improves iteration speed, provides fast feedback, encourages exploration of the problem space with minimal cost, and offers the ability to progressively enhance a program as you build it. Finally, writing a program with simulation in mind yields re-use opportunities and coerces your program into a declarative format.</p>
