@@ -1,15 +1,28 @@
-
-
-- Rich Hickey talks about place oriented programming.
-- Its rude to paraphrase and he means a lot of things with this statement but put simply its a description of the problems state introduces in a program. You should watch his talk. He's much more interesting than me.
-- In my case I mean place-oriented programming as not so much an architectural decision but a fact of the world.
-    - The user data exists here in the user table.
-    - I didn't get to pick that architecture but I am required to operate within it.
-    - Place then becomes the accumulated decisions people have made in a software project.
-    - Decisions that are not obvious.
-    - Accepting contracts (higher order functions) in your function signature means you can make progress in the presence of uncertainty.
-    - "I need to fetch a user" is a declaration of intent.
-    - "SELECT * FROM users" is a concrete implementation detail that can be determined later.
-    - It is not material to the logical function of the program.
-    - Though it may have operational implications that you will need to evaluate later.
-        - As do all interactions with the world.
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../style.css">
+    <title>Deferred Decision Making</title>
+</head>
+<body>
+    <main>
+        <article>
+            <header>
+                <h1>Deferred Decision Making</h1>
+                <p>Published on Sunday, March 8, 2026 - 8:30 PM CDT</p>
+            </header>
+            <p>An interesting methodology emerges from the techniques documented in earlier articles. I call it "deferred decision making". Because our programs are designed by contract it means we can defer hard or permanent choices while we determine the value of our program's core logic.</p>
+            <p>For example, picking a web framework or picking a library for interacting with your SQL database is not a <i>hard</i> problem from an engineering perspective. But they are significant decisions. Whatever choice you make will likely stick with you for the remainder of the project's life. In the past, my projects have stalled out while exploring a near <i>infinite</i> space of inconsequential choices. This is silly. These decisions are incidental to the problems we're solving. They should not consume so much space in our decision making process.</p>
+            <p>With design-by-contract and dependency-injection you can ignore these choices entirely while your project's in its most vulnerable stage (the beginning). You can assess the value of the problem being solved without the clutter of glue code.</p>
+            <p>When its time to choose a library you'll find that the choice becomes much easier. Because your program is isolated from your choice of library it <i>feels</i> easier to change later. Whether it actually is in practice I don't know. But there's a tremendous amount of psychological safety in knowing your program is distinct from the incidental complexity that encloses it.</p>
+            <footer>
+                <p>
+                    <a href="../../index.html">Return Home</a>
+                </p>
+            </footer>
+        </article>
+    </main>
+</body>
+</html>
