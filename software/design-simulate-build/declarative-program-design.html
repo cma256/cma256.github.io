@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../style.css">
+    <title>Declarative Program Design</title>
+</head>
+<body>
+    <main>
+        <article>
+            <header>
+                <h1>Declarative Program Design</h1>
+                <p>Published on Sunday, March 8, 2026 - 9:00 PM CDT</p>
+            </header>
+            <p>An interesting opportunity emerges from the techniques documented in earlier articles. Because our program's are designed by contract it means we <i>skip</i> certain critical aspects of our program when writing our logic the first time. Namely querying the database.</p>
+            <p>Programmers, in my experience, have a lopsided attitude toward performance optimization. On the one hand programmers will readily write N+1 queries and quadratic algorithms without much thought but, nearly without fail, will always choose to <code>SELECT</code> the minimum number of columns needed to solve their problem.</p>
+            <p>This is a silly optimization in the grand scheme of things. These optimizations are almost <i>never</i> driven by empirical data. They are driven by the aesthetic desires and performance sensibilities within the souls of programmers. To put it bluntly, its a very <i>obvious</i> way to optimize a program and gives a <i>feeling</i> of rigor or quality.</p>
+            <p>These optimizations are not beneficial and they are far from harmless. Ad-hoc queries proliferate through code bases very quickly. These queries couple application logic to implementation details making migrations to different storage layouts or mediums incredibly difficult. These optimizations also introduce opportunities to <i>miss</i> required ACL controls or tenant scoping or any number of past or future scoping requirements for your resources.</p>
+            <p>There is nothing in "Design, Simulate, Build" which will prevent a programmer from writing ad-hoc queries, however, I find that psychologically a programmer will be more willing to reach for a <code>fetch_user</code> function rather than writing their own bespoke query. <b>Because</b> you're making the decision of "how to fetch a user" <i>after</i> you've implemented your program. Not during. There is a certain <i>creativity</i> that comes along with writing your program's logic that is distinct from the monotony of implementing your program into the broader application. That's it. There are no other guardrails other than declarative program design becoming the <i>easy default</i>. The path of least resistance.</p>
+            <p>Declarative program design means we define what a <code>User</code> is once, where a user exists once, how to fetch a user once, who is allowed to fetch a user once, and so on. It simplifies our application's query pattern and allows us to optimize on a simple set of queries rather than the entire universe of possible queries our schema can produce. This simplicity allows us to create <i>prepared statements</i> which cover broad swathes of our application. Prepared statements, in many cases, are a significantly better optimization than reducing the number of columns we select. Remember we can always select fewer columns <i>later</i> when we have <i>evidence</i> that such a change would produce a material benefit to our application.</p>
+            <p>Declarative program design also means our application's <i>code</i> can scale. It can change in one place and benefit tens or hundreds or thousands of implementations without a significant drain on the programer's time or mental well-being.</p>
+            <footer>
+                <p>
+                    <a href="../../index.html">Return Home</a>
+                </p>
+            </footer>
+        </article>
+    </main>
+</body>
+</html>
