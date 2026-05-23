@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../style.css">
+    <title>Duplicate Query in Dynamic Sampling Rule Processor</title>
+</head>
+<body>
+    <main>
+        <article>
+            <header>
+                <h1>Duplicate Query in Dynamic Sampling Rule Processor</h1>
+                <p>Published on Saturday, May 23, 2026</p>
+            </header>
+            <p>A duplicate query in the dynamic sampling rule processor was issuing hundreds of millions of daily queries. This was done despite the fact that the data already resided in memory and could be accessed without a query. Pull request <a href="https://github.com/getsentry/sentry/pull/115792">#115792</a> was opened to remove this unnecessary query.</p>
+            <h3>Discovery</h3>
+            <p>The performance issue was discovered using Sentry's tracing tool. Using the "aggregates" table and sorting by high span-emitting traces, I was able to triage subroutines by volume. Clicking into individual traces showed that a database query to the "sentry_project" table was being emitted despite a cache lookup to the "project:&lt;id&gt;" cache key being emitted. Inspecting the code location revealed the defect.</p>
+            <h3>Results</h3>
+            <p>After merging the pull request, the dynamic sampling rules processing subroutine stopped emitting database queries. The program itself reduced its queries to the "sentry_project" table to near zero. Total database time saved was a little over eight hours. Total application time saved was a little under a week.</p>
+            <footer>
+                <p>
+                    <a href="../index.html">Return Home</a>
+                </p>
+            </footer>
+        </article>
+    </main>
+</body>
+</html>
