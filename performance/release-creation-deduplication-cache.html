@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../style.css">
+    <title>Release Creation Deduplication Cache</title>
+</head>
+<body>
+    <main>
+        <article>
+            <header>
+                <h1>Release Creation Deduplication Cache</h1>
+                <p>Published on Tuesday, May 26, 2026</p>
+            </header>
+            <p>On every event received, the system attempted to create a release and "boost" its dynamic sampling profile. This required between 5 and 11 Redis requests per message. The operation was only necessary when processing a release for the first time. The first message would successfully write, and every request that followed would hit Redis and discard the results. Because the system issued many Redis requests and because these requests formed a data dependency chain, this produced a persistent and unnecessary request waterfall. I opened pull request <a href="https://github.com/getsentry/sentry/pull/116173">#116173</a> to remove these unnecessary attempts. It uses a simple LRU cache and retains seen releases in memory. A "max_size" parameter bounds the size of the cache. Hashing the cache key to an integer of known size bounds memory to "max_size" multiplied by 100 bytes.</p>
+            <h3>Discovery</h3>
+            <p>Sentry's tracing tool surfaced the performance issue. Using the "aggregates" table and sorting by high span-emitting traces, I triaged subroutines by volume. Clicking into individual traces showed the span waterfall. A priori knowledge of the system gave me the intuition that this was not necessary.</p>
+            <h3>Results</h3>
+            <p>After merging the pull request, cache hit ratio was observed between 60 and 70%. Cache hits were evenly distributed between "bumps" (a subset of the pre-existing behavior) and "no-ops". Processing time declined by 50% with a warm cache. A slight decline in CPU usage and a surprising decline in memory usage was also observed. Other caches were likely being populated from the pre-existing code paths.</p>
+            <footer>
+                <p>
+                    <a href="../index.html">Return Home</a>
+                </p>
+            </footer>
+        </article>
+    </main>
+</body>
+</html>
