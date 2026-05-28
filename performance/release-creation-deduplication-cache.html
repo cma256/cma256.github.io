@@ -17,7 +17,7 @@
             <h3>Discovery</h3>
             <p>Sentry's tracing tool surfaced the performance issue. Using the "aggregates" table and sorting by high span-emitting traces, I triaged subroutines by volume. Clicking into individual traces showed the span waterfall. A priori knowledge of the system gave me the intuition that this was not necessary.</p>
             <h3>Results</h3>
-            <p>After merging the pull request, cache hit ratio was observed between 60 and 70%. Cache hits were evenly distributed between "bumps" (a subset of the pre-existing behavior) and "no-ops". Processing time declined by 50% with a warm cache. A slight decline in CPU usage and a surprising decline in memory usage was also observed. Other caches were likely being populated from the pre-existing code paths.</p>
+            <p>After merging the pull request, processing time declined by 50% with a warm cache. A persistent 20% decline in CPU usage was observed. Memory usage was unchanged despite retaining up to 120MB of cache per machine. Fifteen billion average daily cache requests were avoided with this change representing 175,000 requests per second.</p>
             <footer>
                 <p>
                     <a href="../index.html">Return Home</a>
