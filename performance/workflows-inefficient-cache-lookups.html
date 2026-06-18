@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../style.css">
+    <title>Inefficient Workflow Processor Cache Look Ups</title>
+</head>
+<body>
+    <main>
+        <article>
+            <header>
+                <h1>Inefficient Workflow Processor Cache Look Ups</h1>
+                <p>Published on Wednesday, June 17, 2026</p>
+            </header>
+            <p>A duplicate cache lookup and repeated cache look ups sharing a common prefix in the "workflow processor" were emitting billions of unnecessary, daily cache lookups. The duplicated cache lookups could be cached in-memory and reused. The repeated cache look ups sharing a common prefix could be rewritten to use a bulk cache lookup operation. Pull requests <a href="https://github.com/getsentry/sentry/pull/115863">#115863</a> and <a href="https://github.com/getsentry/sentry/pull/115864">#115864</a> were opened to remediate these inefficiencies.</p>
+            <h3>Discovery</h3>
+            <p>The performance issue was discovered using Sentry's tracing tool. Using the "aggregates" table and sorting by high span-emitting traces, I was able to triage subroutines by volume. Clicking into individual traces showed duplicate lookups and repeated lookups for cache keys with a common prefix. Inspecting the code location revealed the defects.</p>
+            <h3>Results</h3>
+            <p>After merging the pull request, the workflow processor subroutine stopped emitting 60,000 cache look ups per second.</p>
+            <footer>
+                <p>
+                    <a href="../index.html">Return Home</a>
+                </p>
+            </footer>
+        </article>
+    </main>
+</body>
+</html>

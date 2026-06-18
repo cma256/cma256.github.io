@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../style.css">
+    <title>Remove Unnecessary Redis Script Existence Check</title>
+</head>
+<body>
+    <main>
+        <article>
+            <header>
+                <h1>Remove Unnecessary Redis Script Existence Check</h1>
+                <p>Published on Wednesday, June 17, 2026</p>
+            </header>
+            <p>The span buffer is an extremely high-throughput span buffering process. It has complex interactions with Redis which are modeled in a Lua script. The Lua script needs to be loaded into Redis prior to inserting spans. The Lua script's existence in Redis was being checked on every "span group" insertion. Alternatively, we could load the script once, trust its there, and reload the script only in the event a "NoScriptError" was raised. Pull request <a href="https://github.com/getsentry/sentry/pull/117427">#117427</a> was opened to address this inefficiency.</p>
+            <h3>Discovery</h3>
+            <p>The span buffer is a known, high-throughput process with tight performance requirements. Analysis was performed based on my intuition and prior experience.</p>
+            <h3>Results</h3>
+            <p>After merging the pull request, span group insertion time declined by 5500% (from 150ms to 26ms on average). Total processing time per span declined by 50%.</p>
+            <footer>
+                <p>
+                    <a href="../index.html">Return Home</a>
+                </p>
+            </footer>
+        </article>
+    </main>
+</body>
+</html>
