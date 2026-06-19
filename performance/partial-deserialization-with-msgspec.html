@@ -11,7 +11,6 @@
         <article>
             <header>
                 <h1>Typed, Partial Deserialization with Msgspec</h1>
-                <p>Published on Wednesday, June 17, 2026</p>
             </header>
             <p>The span buffer is an extremely high-throughput span buffering process. It receives JSON with a known schema enforced by the upstream producer. The span buffer was using the "orjson" library to deserialize the JSON payload, however, not every key in the payload was being used. Of the keys that were used, post-deserialization validation steps were applying type narrowing assertions. Pull request <a href="https://github.com/getsentry/sentry/pull/117673">#117673</a> added typed, partial deserialzation with msgspec. This enabled the span buffer to only parse the ~500 bytes it needed and ignore the remaining span data (up to 10 megabytes).</p>
             <h3>Discovery</h3>

@@ -11,7 +11,6 @@
         <article>
             <header>
                 <h1>Release Creation Deduplication Cache</h1>
-                <p>Published on Tuesday, May 26, 2026</p>
             </header>
             <p>On every event received, the system attempted to create a release and "boost" its dynamic sampling profile. This required between 5 and 11 Redis requests per message. The operation was only necessary when processing a release for the first time. The first message would successfully write, and every request that followed would hit Redis and discard the results. Because the system issued many Redis requests and because these requests formed a data dependency chain, this produced a persistent and unnecessary request waterfall. I opened pull request <a href="https://github.com/getsentry/sentry/pull/116173">#116173</a> to remove these unnecessary attempts. It uses a simple LRU cache and retains seen releases in memory. A "max_size" parameter bounds the size of the cache. Hashing the cache key to an integer of known size bounds memory to "max_size" multiplied by 100 bytes.</p>
             <h3>Discovery</h3>
