@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../style.css">
+    <title>An Architecture for AI Agent Sandboxes</title>
+</head>
+<body>
+    <main>
+        <article>
+            <header>
+                <h1>An Architecture for AI Agent Sandboxes</h1>
+                <p>Published on Monday, August 3, 2026</p>
+            </header>
+            <p>This article describes the architecture of an unpublished piece of software written for Sentry. It was ultimately not used and at the time of writing there is no official candidate for replacement, though, other teams are working on the problem.</p>
+            <p>In this article I will describe the architecture I chose but not its alternatives (of which there are many). I will also not describes the exact reasons which funneled Sentry's attention in this direction. Some of those reasons are good, bad, or stale. This was an eight month long project of which my participation covers only the final three week period.
+            </p>
+            <h1>Context</h1>
+            <p>At Sentry one of our business objectives is to enable "self-healing" software. "Self-healing" software describes an agentic loop where a telemetry collector (Sentry) analyzes signals emitted from customer software and automatically emits new software to repair or enhance the customer's software <i>without the customer's input</i>. Many other companies are pursuing this goal to varying degrees of success.</p>
+            <p>The Agent Sandbox project is a long-running project, and, as far as I'm aware, it has not had any intermediate successes along its journey. It had been abandoned (by attrition) a week before I was assigned to the project. I was brought in, as the sole project maintainer, to extend the feature-set of the unreleased Agent Sandbox Platform but discovered that the Agent Sandbox, as it existed, was non-functional and impossible to deploy. In short, the system was not durable, not fault-tolerant, contained significant synchronous I/O in the core async event loop, used in-memory task tracking, suffered from a serious security issue, contained several race conditions, did not clean up resources on connection close, and had two additional unbounded memory growth issues. The infrastructure configured to support this project was sound and was already deployed and awaiting the first release. After reporting these errors I set out to fix the project as quickly as was possible and responsible given the nature of the system. There was at least one feature which was blocked by the Agent Sandbox's deployment timeline. That acted as a significant tailwind to push the design and implementation process forward as quickly as possible.</p>
+            <p>The Agent Sandbox consisted of three distinct pieces of software. A client, a router, and a runtime. The router acted as a proxy; bridging the client and the sandbox. The router also behaved as an orchestrator provisioning runtimes for client's to execute AI agent commands on. The router was a FastAPI HTTP service. The runtime likewise was also a FastAPI HTTP service. The router exposed an HTTP interface for the client. The runtime exposed an HTTP interface for the router. The client implemented a simple HTTP GET/POST scheme.</p>
+            <p>There are many features of this system which I will omit. If only because I do not have the energy to document it all. Ignoring the issues with the system I documented earlier it was very interesting and the Kubernetes configuration to support it was well-done.</p>
+            <h1>Designing a New System</h1>
+            <p>Reading the above will give you no idea of how coupled and specific the Agent Sandbox implementation was to its singular use case. I've omitted details like how it required cloning customer repositories from GitHub and how unnecessarily on rails the whole procedure was. The core issue was that the router took on too much responsibility and too much state. Moving responsibilities to the client would create a more <i>general</i> system and moving state to the runtime and the client would yield a more <i>secure, fault-tolerant, and scalable</i> system.</p>
+            <h2>The Process and Pipe Model</h2>
+            <p>UNIX famously popularized the process and pipe execution model (or so I think). You spawn a process and get three file descriptors in return (referred to as fd for the remainder of this article). The three fds are STDIN, STDOUT, and STDERR. If you want to communicate with a program you write to the STDIN fd. If you want a program to communicate with you, you read from that program's STDOUT and STDERR fds. The fds are byte buffers. You read from them like you would any other stream. Specifically a network stream.</p>
+            <p>Once we consider that the three fds UNIX offers us are the same primitive as the two buffers a TCP connection gives you (SO_RECVBUFF and SO_SNDBUFF) then you can start imagining a world where you connect the two together. Receive something from the network? Pump STDIN. Did STDOUT or STDERR stir? Pump SO_SNDBUFF.</p>
+            <p>What's both interesting and unsuprising about this system is how well-behaved it is (almost as if the platform was <i>designed to work this way</i>). The TCP in and out buffers and the process's STDIN/OUT/ERR buffers are all capable of signaling back-pressure to one another. If you produce to a STDIN buffer but the process is not capable of consuming input the Kernel will accept and buffer input only up to a point. It will eventually signal that it is blocked and not accepting data until the process consumes it. If you're clever you can use these signals and decide to <i>not</i> block your system and instead yield to its executor so another process, or another machine, can consume the machine's limited resources.</p>
+            <p>This (combined with some future, to-be-discussed innovations) produces a remarkably memory-stable system. If you're able to signal back-pressure a non-responding process at one end and a 100GiB file on disk at the other end consume nearly no memory at all. Bytes are produced and consumed in a just-in-time manner.</p>
+            <h2>Designing a Protocol</h2>
+            <p>So far I've expressed my admiration for UNIX (Linux specifically) for doing so much of the work for us. But the system needs to be more than memory-efficient. It needs to, potentially, accept commands in between other commands. For example, if our client is pumping a 100GiB file to the runtime and the client's orchestrator decides its time for the client to shutdown, we'd like to signal the runtime that the client is shutting down without waiting for that 100GiB file to stream to the other end. This gives the runtime the ability to clean up or commit whatever it needs to for when the client resumes.</p>
+            <p>Remembering the router's role from earlier, we'd also like the client to communicate with the router certain orchestration signals while, potentially, simultaneously sending a 100GiB file to the runtime.</p>
+            <p>Finally, we want to consider STDOUT and STDERR. These buffers may be produced to in parallel by our spawned process. Sending bytes from STDOUT and STDERR over the wire at the same time would lead to a corrupted stream as the two unrelated byte streams are interleaved. An easy fix is to fully drain STDOUT and STDERR to the runtime's memory and then send each sequentially over the TCP socket back to the client. This is a slow and memory-intensive process and output is only received after the process completes. This makes it non-viable for any system which values real-time communication or has constrained memory resources (as our machines' will).</p>
+            <p>To solve these problems I turned to a custom "framed" protocol. A framed protocol chunks a stream and wraps it with control bytes. A leading u8 byte acts as the type byte, the next four bytes are a u32 representing the length of the remaining data in the frame. Framing messages enables arbitrary interleaving between frames of differing types. As you receive frames you route the frames to the buffer matching the type. In Python's syntax control header parsing looks like this:</p>
+            <p><pre><code>    Struct("!BI").unpack(stream.readexactly(5))</code></pre></p>
+            <p>A u32 payload length was chosen because the maximum frame size was restricted to 1MiB. Payloads over 1MiB span multiple frames. An empty frame signals EOF. 1MiB was chosen as the payload size because it amortizes the cost of the header parsing without being a DOS risk. It is also a power of two which should be friendly to our system's memory allocators preventing us from fragmenting as much memory when a stream is full. Though, I never tested this to prove it actually did anything, it is a kind gesture which I'm fairly sure is helpful.</p>
+            <p>There are other features of the protocol in regards to Kubernetes orchestration, protocol version negotiation, session signalling, and keepalive which I will not describe. But, rest assured, its there and solves for its use case. The final thing I'll say about the protocol is that it is general. The commands you issue are totally uncoupled to any particular use case. You issue commands to the runtime and recive exit codes and streaming output. There is nothing in between you and the machine. To your agent harness it appears as though it is running <i>on that machine.</i></p>
+            <h2>Authentication</h2>
+            <p>A brief aside about authentication. This is a fully internal system and does not require protection from the outside world. Even so I wanted to ensure that Sentry engineers could not violate a trust boundary and accidentally access customer sensitive information. The solution is simple. Each client generates a 128-bit token. The token is never stored and only exists in the client's memory. The token is sent to the router with each new connection. The router is a stateless service and so can not know if this token is valid or who it refers to or what access it provides. The router accepts the token, computes the SHA256 hash of the token, truncates it slightly for Kubernetes reasons, and uses this truncated hash as the runtime pod identifier. When the router looks up the pod ID in etcd it knows that if the ID maps to a valid pod then the client must own it and therefore is authenticated to access it. Pod IDs are semi-accessible and so possession of the pod ID is not sufficient to communicate ownership.</p>
+            <p>This is somewhat atypical for the web domain. Its more common to store tokens in a database and then have that token maintain relationships to the data it owns. For this project, given my timeline, I did not have time to provision additional infrastructure to support such a scheme. Nor was it particularly desirable. Additional infrastructure is an additional maintenance burden. Both operationally and code-wise. Re-using etcd as our source of truth maps exactly to our use case of <i>use etcd as our source of truth</i>. The system can never exceed the feature set Kubernetes offers and so Kubernetes is the ideal target.</p>
+            <p>The ephemeral nature of the token means we can not resume a session after a client restart. There was a planned addition to support this. The token would have eventually been stored somewhere and retrieved by the client at time of need. Here we would have used a relational database and asserted that the client had the correct access rights before handing over the token.</p>
+            <h1>Implementation</h1>
+            <p>I will spend very little time on implementation. You can accomplish a proof of concept with a fully functioning client, router, and runtime in roughly 200 lines of code. The production implementation was fully 2000 lines of code. All of these additions are full protocol adherence, resource clean-up, and code comments. If you significantly relax your attitude toward these items then you too can have this system in about an hour's typing time.</p>
+            <p>Below I've shared some pseudo code to communicate how the runtime works in practice.</p>
+            <pre><code>    async def connection_handler(reader, writer):
+        async def conn_writer(stream: StreamReader, write_chan: Callable[[StreamWriter, bytes], None]):
+            while True:
+                data = await stream.read(4096)
+                if not data:
+                    return None
+    
+                write_chan(writer, data)
+                await writer.drain()
+
+        async def conn_reader() -> None:
+            while True:
+                process.stdin.write(await read_frame(reader))
+                await process.stdin.drain()
+
+        process = await asyncio.create_subprocess_exec(
+            "/bin/bash",
+            "-c",
+            command,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            start_new_session=True,
+        )
+
+        task_stdout = asyncio.create_task(conn_writer(process.stdout, write_stdout_frame))
+        task_stderr = asyncio.create_task(conn_writer(process.stderr, write_stderr_frame))
+        task_client = asyncio.create_task(conn_reader())
+
+        task_process_exec = asyncio.create_task(process.wait())
+        done, _ = await asyncio.wait((task_process_exec, task_client), return_when=asyncio.FIRST_COMPLETED)
+
+        if task_process_exec in done:
+            await asyncio.gather(task_stdout, task_stderr, return_exceptions=True)
+        else:
+            task_process_exec.cancel()
+            raise task_client.exception()
+
+        await asyncio.gather(task_stdout, task_stderr, task_client, return_exceptions=True)
+
+
+    async def main():
+        server = await asyncio.start_server(connection_handler, HOST, PORT)
+        async with server.serve_forever():
+            await server.wait_closed()
+
+
+    if __name__ == "__main__":
+        asyncio.run(main())</code></pre>
+            <p>This code is not real or useful as code. I've significantly cut down a lot of the protocol and error handling components. What's intended with the code is to communicate the type of system we're working in. Its a TCP server which accepts long running connections. Process lifetime and connection lifetime are tied though its not well communicated in the code above. There were plans to disentangle those two lifetimes in the case of connection partition or router shutdown. Due to time constraints this was not implemented.</p>
+            <p>The above code spans 40-ish lines. A functioning version might take another 40 but I'm not sure. But this is the core engine of the system. A connection spawns a process which consumes from and writes to the connection's buffers.</p>
+            <p>The system is multiplayer allowing multiple clients to execute commands on the same runtime at the same time. We can see the Kernel buffers being drained 4KiB at a time keeping our memory foot-print small. No EOF handling in the sample code's connection reader but it existed in the full implementation.</p>
+            <p>Its a shame how much I've had to cut. I would show you more but this system was never open-source and I do not intend to ask permission to share it.</p>
+            <p>The system was benchmarked and achieved a maximum throughput of 6.8 gigabits per second. It was also memory stable as advertised consuming no more than 1MiB * num connections (file transfer from client disk to runtime disk). Actual production behavior would vary but that would be entirely dependent on how the runtime was used and not the system I designed.</p>
+            <p>The programs themselves are dependency free. There are no third-party dependencies required to make this work. This is purely the asyncio module, subprocess module, and some other anciallary data munging libraries from Python stdlib.</p>
+            <h1>Success</h1>
+            <p>We have a fully general system capable of multiplexing multiple signals over a single connection. The system provides full access to the runtime and enables as complex (or not) client behavior as is required for its use case.</p>
+            <p>In the final implementation clients were able to specify the runtime's image, CPU and memory request, and connection lifecycle. The router is stateless, secure, and performant. No additional infrastructure was provisioned to make this system work.</p>
+            <h1>Outcome</h1>
+            <p>On the morning of July 31st (the date is important) I had planned on releasing this system to the internal "Sentry for Sentry" deployment target for testing. However, a surprise early morning meeting with my former manager (always a welcome appearance on one's calendar) prevented that. I was removed from the project effective immediately.</p>
+            <p>This article is not about the unfortunate demise of this system or my participation in the project. But I couldn't <i>lie</i> and say this architecture made it to production. And, if it didn't make it to production, you, as a reader, would expect an explanation.</p>
+            <p>If its not clear I was the sole engineer on this project and I was transferred to a new team to solve an entirely different problem. I only developed this software because it was required to unblock the work they actually wanted me to do.</p>
+            <p>The stated reason I was removed from the project because of my September 1st four-week sabbatical. It was said I would not have enough time to finish and validate the project before then. A compounding factor was my new manager's four-week sabbatical which started on August 1st! He would not be around to monitor my progress. That's about all I know. I received this information second-hand so perhaps there were more arguments that did not make it to me.</p>
+            <p>In truth, I believe the reason I was removed is because another team wanted the project more. They have their own vision and they are the most prominent beneficiary of it. After my removal their team has taken over the project. I think this is a better outcome organizationally. They are the immediate intended beneficiaries. They should have say in its development. Not someone else who was parachuted in (me). As the old addage goes, <i>two of a trade never agree</i> and they had their share of disagreements. Typically, I would work through those disagreements with the engineers and make changes to suit the needs of the organization but these disagreements only reached me a day before my removal so there was no time to really do anything. Such is life!</p>
+            <p>Now, of course, you might accuse me of putting on a brave face for the purposes of the blog. That may be true. No one likes to feel like they've failed. But, in truth, a significant part of me is relieved. It has been an incredibly stressful three week period. Being removed from the project has lifted a significant mental burden from my life. It feels like I'm on vacation while this project-free honeymoon period lasts. Fear not though, I've been reassigned to another troubled project. While Sentry permits, I will still be working myself into an early grave!</p>
+            <p>On the plus side, you now get to read about this architecture and, if you like, argue with me about its strengths and weaknesses. Though, I doubt I'll have time; you'll just have to imagine a spirited argument with yourself. If you find the global minima let me know.</p>
+            <footer>
+                <p>
+                    <a href="../index.html">Return Home</a>
+                </p>
+            </footer>
+        </article>
+    </main>
+</body>
+</html>
