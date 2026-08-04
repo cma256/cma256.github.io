@@ -17,7 +17,7 @@
             <p>In this article I will describe the architecture I chose but not its alternatives (of which there are many). I will also not describes the exact reasons which funneled Sentry's attention in this direction. Some of those reasons are good, bad, or stale. This was an eight month long project of which my participation covers only the final three week period.
             </p>
             <h1>Context</h1>
-            <p>At Sentry one of our business objectives is to enable "self-healing" software. "Self-healing" software describes an agentic loop where a telemetry collector (Sentry) analyzes signals emitted from customer software and automatically emits new software to repair or enhance the customer's software <i>without the customer's input</i>. Many other companies are pursuing this goal to varying degrees of success.</p>
+            <p>At Sentry one of our business objectives is to enable "self-healing" software. "Self-healing" software describes an agentic loop where a telemetry collector (Sentry) analyzes signals emitted from customer software and automatically emits new software to repair or enhance the customer's software <i>without the customer's input</i>. One requirement of this push is that we are able to execute arbitrary custom software within a sandboxed environment. This might mean an AI agent can run a Python script or a bash command or build the customer's project and run the test suite.</p>
             <p>The Agent Sandbox project is a long-running project, and, as far as I'm aware, it has not had any intermediate successes along its journey. It had been abandoned (by attrition) a week before I was assigned to the project. I was brought in, as the sole project maintainer, to extend the feature-set of the unreleased Agent Sandbox Platform but discovered that the Agent Sandbox, as it existed, was non-functional and impossible to deploy. In short, the system was not durable, not fault-tolerant, contained significant synchronous I/O in the core async event loop, used in-memory task tracking, suffered from a serious security issue, contained several race conditions, did not clean up resources on connection close, and had two additional unbounded memory growth issues. The infrastructure configured to support this project was sound and was already deployed and awaiting the first release. After reporting these errors I set out to fix the project as quickly as was possible and responsible given the nature of the system. There was at least one feature which was blocked by the Agent Sandbox's deployment timeline. That acted as a significant tailwind to push the design and implementation process forward as quickly as possible.</p>
             <p>The Agent Sandbox consisted of three distinct pieces of software. A client, a router, and a runtime. The router acted as a proxy; bridging the client and the sandbox. The router also behaved as an orchestrator provisioning runtimes for client's to execute AI agent commands on. The router was a FastAPI HTTP service. The runtime likewise was also a FastAPI HTTP service. The router exposed an HTTP interface for the client. The runtime exposed an HTTP interface for the router. The client implemented a simple HTTP GET/POST scheme.</p>
             <p>There are many features of this system which I will omit. If only because I do not have the energy to document it all. Ignoring the issues with the system I documented earlier it was very interesting and the Kubernetes configuration to support it was well-done.</p>
@@ -31,7 +31,7 @@
             <h2>Designing a Protocol</h2>
             <p>So far I've expressed my admiration for UNIX (Linux specifically) for doing so much of the work for us. But the system needs to be more than memory-efficient. It needs to, potentially, accept commands in between other commands. For example, if our client is pumping a 100GiB file to the runtime and the client's orchestrator decides its time for the client to shutdown, we'd like to signal the runtime that the client is shutting down without waiting for that 100GiB file to stream to the other end. This gives the runtime the ability to clean up or commit whatever it needs to for when the client resumes.</p>
             <p>Remembering the router's role from earlier, we'd also like the client to communicate with the router certain orchestration signals while, potentially, simultaneously sending a 100GiB file to the runtime.</p>
-            <p>Finally, we want to consider STDOUT and STDERR. These buffers may be produced to in parallel by our spawned process. Sending bytes from STDOUT and STDERR over the wire at the same time would lead to a corrupted stream as the two unrelated byte streams are interleaved. An easy fix is to fully drain STDOUT and STDERR to the runtime's memory and then send each sequentially over the TCP socket back to the client. This is a slow and memory-intensive process and output is only received after the process completes. This makes it non-viable for any system which values real-time communication or has constrained memory resources (as our machines' will).</p>
+            <p>Finally, we want to consider STDOUT and STDERR. These buffers may be produced to in parallel by our spawned process. Sending bytes from STDOUT and STDERR over the wire at the same time would lead to a corrupted stream as the two unrelated byte streams are interleaved. An easy fix is to fully drain STDOUT and STDERR to the runtime's memory and then send each sequentially over the TCP socket back to the client. This is a slow and memory-intensive process and output is only received after the process completes. This makes it non-viable for any system which values real-time communication or has constrained memory resources (as our machines will).</p>
             <p>To solve these problems I turned to a custom "framed" protocol. A framed protocol chunks a stream and wraps it with control bytes. A leading u8 byte acts as the type byte, the next four bytes are a u32 representing the length of the remaining data in the frame. Framing messages enables arbitrary interleaving between frames of differing types. As you receive frames you route the frames to the buffer matching the type. In Python's syntax control header parsing looks like this:</p>
             <p><pre><code>    Struct("!BI").unpack(stream.readexactly(5))</code></pre></p>
             <p>A u32 payload length was chosen because the maximum frame size was restricted to 1MiB. Payloads over 1MiB span multiple frames. An empty frame signals EOF. 1MiB was chosen as the payload size because it amortizes the cost of the header parsing without being a DOS risk. It is also a power of two which should be friendly to our system's memory allocators preventing us from fragmenting as much memory when a stream is full. Though, I never tested this to prove it actually did anything, it is a kind gesture which I'm fairly sure is helpful.</p>
@@ -92,11 +92,35 @@
 
     if __name__ == "__main__":
         asyncio.run(main())</code></pre>
+            <p>And here's a simplified view of the router's core loop. The core idea is expressed as: connect to the sandbox and blindly relay bytes from A to B and B to A. This blind relay means we never have to inspect the payload and so incur very little performance penalty from any Python code. We're entirely network bound.</p>
+            <pre><code>    async def session_handler(reader, writer, message):
+        sandbox_id = _sandbox_id(message["token"])
+        server_reader, server_writer = await connect_to_sandbox(sandbox_id)
+
+        keepalive(writer)
+        keepalive(server_writer)
+
+        try:
+            write_control_frame(server_writer, message)
+            await server_writer.drain()
+        except Exception:
+            server_writer.close()
+            try:
+                await server_writer.wait_closed()
+            except OSError:
+                pass
+            raise
+
+        await asyncio.gather(
+            relay(reader, server_writer),
+            relay(server_reader, writer),
+            return_exceptions=True,
+        )</code></pre>
             <p>This code is not real or useful as code. I've significantly cut down a lot of the protocol and error handling components. What's intended with the code is to communicate the type of system we're working in. Its a TCP server which accepts long running connections. Process lifetime and connection lifetime are tied though its not well communicated in the code above. There were plans to disentangle those two lifetimes in the case of connection partition or router shutdown. Due to time constraints this was not implemented.</p>
-            <p>The above code spans 40-ish lines. A functioning version might take another 40 but I'm not sure. But this is the core engine of the system. A connection spawns a process which consumes from and writes to the connection's buffers.</p>
+            <p>The runtime spans 40-ish lines and the proxy another 20. A functioning version might take another 80 but I'm not sure. This is the core engine of the system. A runtime connection spawns a process which consumes from and writes to the connection's TCP buffers. A client connection demands a sandbox connection and the router brokers the network relay.</p>
             <p>The system is multiplayer allowing multiple clients to execute commands on the same runtime at the same time. We can see the Kernel buffers being drained 4KiB at a time keeping our memory foot-print small. No EOF handling in the sample code's connection reader but it existed in the full implementation.</p>
             <p>Its a shame how much I've had to cut. I would show you more but this system was never open-source and I do not intend to ask permission to share it.</p>
-            <p>The system was benchmarked and achieved a maximum throughput of 6.8 gigabits per second. It was also memory stable as advertised consuming no more than 1MiB * num connections (file transfer from client disk to runtime disk). Actual production behavior would vary but that would be entirely dependent on how the runtime was used and not the system I designed.</p>
+            <p>The system was benchmarked and achieved a maximum throughput of 6.8 gigabits per second. It was also memory stable as advertised (/dev/urandom output transfer from the client to the runtime's /dev/null). Actual production behavior would vary but that would be entirely dependent on how the runtime was used and not the system I designed.</p>
             <p>The programs themselves are dependency free. There are no third-party dependencies required to make this work. This is purely the asyncio module, subprocess module, and some other anciallary data munging libraries from Python stdlib.</p>
             <h1>Success</h1>
             <p>We have a fully general system capable of multiplexing multiple signals over a single connection. The system provides full access to the runtime and enables as complex (or not) client behavior as is required for its use case.</p>
@@ -108,7 +132,8 @@
             <p>This article is not about the unfortunate demise of this system or my participation in the project. But I couldn't <i>lie</i> and say this architecture made it to production. And, if it didn't make it to production, you, as a reader, would expect an explanation. So, there, you have your explanation!</p>
             <h1>Conclusion</h1>
             <p>With that aside, I'm proud of what I have here. It works well and has a nice protocol which is trivially extensible and fully general. The system itself puts maximum control into the hands of product engineers. In my experience, platform engineers tend to be control-freaks. I think this is an anti-pattern. All the protestations of security, performance, and stability never seem to materialize in these highly specific, bespoke systems. In this implementation stability, performance, correctness, and security were all improved because of its <i>generality</i> not in spite of it.</p>
-            <p>Its true with great power comes great responsibility but, in my mind, responsibility for a particular use case rests in the product engineers who build it. I could design an API that leaks credentials. Its not a DBAs responsibility to prevent me from making that API; its mine.</p>
+            <p>Its true with great power comes great responsibility but, in my mind, responsibility for a particular use case rests on the product engineers who build it. I could design an API that leaks credentials. Its not a DBAs responsibility to prevent me from making that API; its mine.</p>
+            <p>Hopefully you enjoyed this article as much as I enjoyed writing it. And, hopefully, you thought what I did was as interesting as I did. If not I would be curious to hear your alternatives!</p>
             <footer>
                 <p>
                     <a href="../index.html">Return Home</a>
