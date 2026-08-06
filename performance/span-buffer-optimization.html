@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../style.css">
+    <title>Span Buffer Optimization</title>
+</head>
+<body>
+    <main>
+        <article>
+            <header>
+                <h1>Span Buffer Optimization</h1>
+            </header>
+            <p>The span buffer is an extremely high-throughput span buffering process. Spans are structured log messages with two well-known fields: "startTimestamp" and "endTimestamp". Spans are received in a JSON format with a known wrapping schema enforced by the upstream producer.</p>
+            <p>The span buffer's primary goal is trivially guessable by its name but how it buffers is so far a mystery. Because related spans do not have a shared affinity to a single server they are buffered in Redis. The exact buffering mechanics I'll leave undefined but there is a custom Lua script called "add-buffer.lua" which contains the details. There are lots of GET, SET, HSET commands sprinkled throughout. These commands attempt to zip different span trees together (span relationships naturally take on a tree structure). There are, naturally, significant data dependencies which would require many sequential operations to resolve. Though, in practice, span trees are shallow enough and rudimentary path compression effective enough that data dependencies between trees are not a significant production concern.</p>
+            <h2>Problem Identification</h2>
+            <p>I was on a fishing expedition looking for easy performance optimization opportunities. The span buffer being so well-known as a high-throughput (and somewhat fidgety) process was a natural first place to look. The team that created the span buffer was very thorough and meticulous with their telemetry collection. Their DataDog dashboard was a treasure trove of every performance analytic you could want out of the system.</p>
+            <p>One piece of telemtry that stood out was their "Breakdown per span" which recorded, in microseconds, how long a span took to be processed by phase. The total time was a little over 200us. More interesting were the specific items recorded in the breakdown. "Deserialization" and "Overhead" were significantly higher than I'd expect and a particular breakdown "Insert Spans" was hugely over-represented.</p>
+            <p>With these details in mind I began analyizing the span buffer's implementation. I used the breakdown markers in the code to isolate the slow areas based on what I saw in DataDog. From there on the optimization process involved writing benchmarking scripts, experimenting with new implementations, or applying older, well-known strategies to optimize the consumer.</p>
+            <h2>Results</h2>
+            <p>After applying my performance optimizations total span latency declined from greater than 200us to 60us. The number of Redis commands issued fell by more than 2.3 million <i>per second</i>. Latency is now dominated by the "Push Payloads" breakdown which is limited by the networks ability to shuttle compressed bytes from A to B. Further latency reductions are possible but have not been attempted due to my reassignment to another team and the diminishing returns of each gain. I believe the latency floor is roughly 50us per span. With more drastic action that could be reduced further but it is unlikely the maintainers would want to review or accept such changes.</p>
+            <p>The following pull requests were opened to produce these results:</p>
+            <ul>
+                <li><a href="https://github.com/getsentry/sentry/pull/119542">ref(span-buffer): Reduce Lua memory allocation pressure and function call overhead</a></li>
+                <li><a href="https://github.com/getsentry/sentry/pull/118909">ref(span-buffer): Sample metrics collection</a></li>
+                <li><a href="https://github.com/getsentry/sentry/pull/118879">ref(span-buffer): Return lua latency values in microseconds</a></li>
+                <li><a href="https://github.com/getsentry/sentry/pull/118152">ref(span-buffer): Optimize fan out to only target possible candidates</a></li>
+                <li><a href="https://github.com/getsentry/sentry/pull/118137">ref(span-buffer): Return latency and metrics tables as flattened lists</a></li>
+                <li><a href="https://github.com/getsentry/sentry/pull/117804">ref(span-buffer): Skip the EXISTS check by using child_ic heuristic</a></li>
+                <li><a href="https://github.com/getsentry/sentry/pull/117793">ref(span-buffer): Cache previous lookups to Redis in a local array</a></li>
+                <li><a href="https://github.com/getsentry/sentry/pull/117676">ref(span-buffer): Exclusively use msgspec span decoder</a></li>
+                <li><a href="https://github.com/getsentry/sentry/pull/117673">ref(span-buffer): Improve performance of span buffer processor with typed msgspec deserializer</a></li>
+                <li><a href="https://github.com/getsentry/sentry/pull/117427">ref(span-buffer): Exit early if the add_buffer script was previously loaded</a></li>
+                <li><a href="https://github.com/getsentry/sentry/pull/117436">ref(span-buffer): Add pipelined queue deadline lookups</a></li>
+            </ul>
+            <p>At least one other pull request was opened and rejected. It involved improving our path compression algorithm and would have reduced the number of redirects when zipping trees.</p>
+            <p>Each of these changes is worth talking about in depth. And each of these changes required significant analysis and benchmarking to both discover and to validate my suspicions. Most of the add-buffer.lua optimizations would not have been possible without strong testing harnesses. For this Claude Code was very helpful. I could have an AI agent generate a benchmarking script that analyzed the process from a specific angle. This is, of course, a significant time savings as compared to writing these myself but these scripts were so numerous that I was unlikely to have ever written them in the first place. Claude Code opened up a new avenue of performance analysis that has been somewhat atypical for me. Thirty seconds of prompt writing and another thirty seconds of waiting yielded output which was significantly helpful in discovering performance opportunities.</p>
+            <h3>Select Commentary</h3>
+            <p>In the pre-change implementation the span buffer was using the "orjson" library to deserialize the JSON payload, however, not every key in the payload was being used. In fact, because of the nature of the input the vast majority of keys were never and could never be used. Of the keys that were used, a post-deserialization validation step was applying type narrowing assertions to make working with the payload easier. This problem is a natural fit for msgspec which is a typed deserialization library that allows partial deserialization of a JSON input. After adding msgspec, the span buffer only had to parse the roughly 500 bytes it needed and was able to ignore the remaining span data it didn't (up to 10 megabytes). This reduces most parsing to, essentially, a scan of the bytes and drastically reduces allocation pressure. Applying msgspec to this use case cut average span parsing time from 18us to 6us.</p>
+            <p>In order to buffer spans a special Lua script needs to be loaded into Redis prior to inserting spans. The Lua script's existence in Redis was being checked on every span tree insertion. However, its easier to ask for forgiveness than permission. If we load the script once, trust its there, and reload the script only if a "NoScriptError" is raised then we can avoid a roundtrip to Redis per span tree. This was a significant optimization. Span group insertion time declined by 83% (from 150ms to 26ms on average) saving a little over 60us per span.</p>
+            <p>The Lua runtime itself turned out to be a significant culprit of latency. Reducing its memory allocation pressure and optimizing some string operations yielded a 25% decrease in total script processing time.</p>
+            <p>Replacing thousands of sequential GET commands in the add-buffer Lua script with a single MGET command reduced latency by a decent margin but not as much as you might think (only about 50%). It did, however, save a significant number of commands (2.3M/s).</p>
+            <footer>
+                <p>
+                    <a href="../index.html">Return Home</a>
+                </p>
+            </footer>
+        </article>
+    </main>
+</body>
+</html>
