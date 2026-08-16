@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../style.css">
+    <title>A Unified Source Code Management Platform</title>
+</head>
+
+<body>
+    <main>
+        <article>
+            <header>
+                <h1>A Unified Source Code Management Platform</h1>
+                <p>Published on Monday, August 3, 2026</p>
+            </header>
+            <p>In this article I will describe the architecture I chose for the unified source code management platform, the situation that created the demand for its creation, why it works, and how it solved for Sentry's current and future use cases.</p>
+            <h1>Context</h1>
+            <p>Sentry regularly interacts with a broad range of source code management providers. Before the project started, there were some pre-existing facilities for interacting with these service providers in a vendor agnostic way, however, they were (and still are) very much tied to their singular use case. These abstractions are located in the <a href="https://github.com/getsentry/sentry">getsentry/sentry</a> repository and are not accessible to other repositories. Sentry has traditionally been a public, monorepo company but with the introduction of the AI boom Sentry has progressively moved to a private, service-based architecture. The has led to the need to share library code between repositories.</p>
+            <p>In Seer, our private AI-focused repository, a custom GitHub client was developed and used throughout the code base. This client strongly coupled Seer to GitHub but it also posed an interesting question of credential provenance. How do private credentials enter Seer, how are they managed, and how do we ensure this system is secure? The getsentry/sentry respository owned the data and had its own mechanisms for managing credentials. Seer shared none of those capabilities and relied on RPC calls to fetch the credentials from Sentry.</p>
+            <p>These diverging client implementations also had diverging ideas of how requests should be sent to GitHub, what observability should be recorded, what, if any, rate-limits should be applied, how retries should work, and other diverging considerations. New considerations were also being discovered. As Sentry emitted more and more source code management requests we found we were hitting service-provider rate-limits more aggressively. This was particularly concerning because high-value integrations were being rate-limited by newer, low-value integrations. These concerns were so serious that Sentry faced a churn risk from our inability to fairly share resources between our various use cases.</p>
+            <h1>Problem Diagnosis</h1>
+            <p>Given this description of the world let's extract some problems that we might solve. I've gone to the trouble of delimiting the problem-set to only those problems that were solved by this project. There are more problems we could imagine and that could potentially have been solved by this project. Including the set of problems I discovered while in the fact finding process would unnecessarily burden you with too much information.</p>
+            <p>There were problems that were solved by this project which are not included in this set. They were excluded because their Sentry specificity. It would take too much time to explain and so they are omitted.</p>
+            <h2>Strong Repository Coupling</h2>
+            <p>Sentry's source code management abstractions are locked inside the sentry monorepo. These capabilities are not exposed via RPC or by a shared library. Every new repository must implement their own source code management library.</p>
+            <h2>Strong Service Provider Coupling</h2>
+            <p>Existing source code management implementations are strongly coupled to a single service-provider. When adding new service providers, engineers need to modify all of their existing use cases to support each new service provider. These existing use cases might represent years of accumulated decisions and assumptions. It may not be trivial to port behavior to another service-provider.</p>
+            <h2>Ad-hoc Credential Management</h2>
+            <p>Ad-hoc credential management represents a significant security risk. Credential scoping and ownership is considered on a case by case basis and significantly diverges between implementations.</p>
+            <p>Leaving credential management to each repository is not only a security risk but also a significant mental burden on each implementer. Every engineer wishing to fetch credentials needs to learn the same lessons over and over again. These lessons have limited utility outside their scope of concern and are not important for engineers to learn as part of their career and skill development. As a result this work is accurately viewed as menial drudgery to accommodate incidental complexity the engineer does not care about.</p>
+            <h2>Missing Access Control Enforcement</h2>
+            <p>Retreiving credentials is one aspect of authorizing against a service-provider. Sentry also restricts who can access which resources at what time. These access controls may be simple or complex but they must be obeyed.</p>
+            <p>When adding a new repository that needs to interact with source code management service providers, an engineer needs to consider constraints that do not readily reveal themselves in the course of exploring their problem space. Its something you only find out about once you've made a significant error.</p>
+            <h2>Missing Use Case Quotas</h2>
+            <p>To ensure fair sharing between use cases every implementation of a source code management client would need to consider some shared conception of quotas and usage tracking. If these assumptions are not met then fair quota allocation is not possible.</p>
+            <h2>Divergent Observability Characteristics</h2>
+            <p>Of lesser concern is our observability. We'd like to know how many requests we're issuing to a service provider, their shape, the response code, and more. Tracking this in a consistent way gives us the ability to re-use dashboards, runbooks.</p>
+            <h1>Solution</h1>
+            <footer>
+                <p>
+                    <a href="../index.html">Return Home</a>
+                </p>
+            </footer>
+        </article>
+    </main>
+</body>
+
+</html>
