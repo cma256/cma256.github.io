@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../style.css">
+    <title>Connection Pools are not Connection Limits</title>
+</head>
+<body>
+    <main>
+        <article>
+            <header>
+                <h1>Connection Pools are not Connection Limits</h1>
+                <p>Published on Wednesday, August 20, 2025</p>
+            </header>
+            <h2>Situation Description</h2>
+            <p>While performing a security audit of the sandbox-router repository several substantial defects were observed. These defects are serious enough to stop the release of the sandbox-router to the DE and US environments and should have prevented a release to the S4S2 environment. Until these defects are resolved the sandbox-router and sandbox-runtime can not be released.</p>
+            <h2>Problem Diagnosis</h2>
+            <p>In short, the system is not fault-tolerant, durable, performant, correct, stable, secure, or cost-efficient. It can not survive redeploys. It does not appropriately manage its timeouts.</p>
+            <p>Minor deficiencies have been omitted in the interest of time. Additionally, there may be significant deficiencies which I have not yet discovered. Given the complexity of the system I expect it will take some time to fully discover its defects. This list will be continually updated as new problems are discovered.</p>
+            <h3>Process Local Task State</h3>
+            <p>“Coding Tasks” are stored in-memory within a sandbox-router server and are not replicated to the other sandbox-router servers. Requests to GET /coding-tasks/{id} will 404 unless the load balancer is smart enough (or lucky enough) to route the request to the correct server (not configured). The sandbox-router is currently deployed to S4S2 with the replica count set to 2.</p>
+            <h3>Process Local Credential State</h3>
+            <p>Git tokens are stored in memory within the credential-proxy. A credential-proxy restart will invalidate every sandbox's API key. The credential-proxy is written under the assumption it is single-server, never crashes, and never redeploys. If multiple credential-proxy servers are active the sandbox may experience 4XX errors even though its credential is correct.</p>
+            <h3>Unbounded Sandbox Router Memory Usage</h3>
+            <p>Tasks are never evicted from the in-memory _tasks dictionary. If the sandbox-router lives long enough it will eventually consume all of its allocated memory.</p>
+            <h3>Tasks Are Not Durable</h3>
+            <p>Tasks are stored in-memory. Failure or redeployment of a sandbox-router node will incur data loss.</p>
+            <h3>Tasks Are Not Idempotent</h3>
+            <p>A coding-task may be scheduled but never return a response to the client. The client is unable to idempotently retry the task or otherwise resume the connection. Idempotency is particularly important because task commands can mutate the state of the sandbox. Duplicate commands can leave the sandbox in an undefined state.</p>
+            <h3>Tasks Can Not Be Resumed</h3>
+            <p>On sandbox-router failure or re-deployment, the sandbox server is still active and processing the client's request. The client has no capability of re-establishing its connection to the sandbox. The sandbox and sandbox-router have no mechanism for negotiating session recovery.</p>
+            <h3>Task Cleanup is Best-Effort</h3>
+            <p>Cleanup failures are swallowed and never retried. Failure to retry exceptions could orphan resources.</p>
+            <h3>Incomplete Task Cleanup During Redeploy</h3>
+            <p>When redeploying the sandbox-router service there is no guarantee the cleanup procedure will actually execute to completion. Failure to do so could orphan resources.</p>
+            <h3>Blocking Operations in the Sandbox Router Event Loop</h3>
+            <p>Synchronous I/O operations are being emitted without awaiting them in an async task. This blocks the single-threaded event-loop making the FastAPI HTTP server single-threaded and blocking.</p>
+            <h3>Sandbox TTL Can Expire Mid-Task</h3>
+            <p>The sandbox router defines a setup TTL of 600 seconds and an agent TTL of 660 seconds. However, the sandbox TTL is hard-coded as a maximum of 900 seconds. The deadlines for these two contracts are incongruent.</p>
+            <h3>Credential Proxy Potential Credential Leak</h3>
+            <p>Credentials are stored in an in-memory credential registry within the credential-proxy service. Additions and removals to the registry are performed by the sandbox-router service. If the sandbox-router crashes or redeploys while it has a credential in the registry, the sandbox-router will not remove that credential from the proxy leaving it orphaned for the life of the credential-proxy.</p>
+            <p>These credentials could potentially be leaked though no known mechanism exists. This also represents a potential memory-leak, though, the volume is so slow and the mechanism so rare that we'd never see on in practice.</p>
+            <h3>Infinite Poll on Task Scheduling Failure</h3>
+            <p>When a coding task request is received we store a CodingTaskResult instance with a status of pending. If the asyncio task fails, or otherwise never updates the task, then the client will poll the coding-task endpoint forever. There is no task execution deadline or callback that handles cancellation or failure. As previously documented, tasks are never evicted. Client's poll forever.</p>
+            <h3>Kubernetes Responses Are Not Validated</h3>
+            <p>Kubernetes responses are never read to determine if the request succeeded or failed.</p>
+            <h3>Excessively Long Lived HTTP Requests</h3>
+            <p>Multiple HTTP requests are held open for >10 minutes. There are no heartbeats or network recovery mechanisms implemented.</p>
+            <h3>Task Cancellation Race Conditions</h3>
+            <p>A request to DELETE /coding-task may report success without actually cleaning up the coding-task resources. There are distributed and local failure modes.</p>
+            <h2>Problem Delimitation</h2>
+            <p>Among this list, there are few problems which can be avoided. We might sacrifice some clean-up correctness for a coarser sandbox termination cleanup procedure, for example.</p>
+            <h2>Strategic Direction</h2>
+            <p>The sandbox-router assumes too much responsibility and can not possibly accommodate all of the roles it has taken on. It assumes ownership of resources it should not and does not appropriately guard those resources.</p>
+            <p>We have three options:</p>
+            <ol>
+                <li>Let the thing limp its way into production and accept the failures as the cost of operation.</li>
+                <li>Fix the service. Adopt its CRUD-style architecture. Add durable stores and message queues to facilitate its mode of operation.</li>
+                <li>Re-architect the service. Accept that the design is too resource intensive and flawed to deploy to production. Adopt an alternative approach more suited to the problem space.</li>
+            </ol>
+            <h3>Candidate Strategies</h3>
+            <ol>
+                <li>
+                    <p>Run the existing sandbox-router service as a single server. Merge the credential-proxy into the sandbox-router service.</p>
+                    <ol>
+                        <li>Solves <i>some</i> of the serious distributed system questions.</li>
+                        <li>Does not resolve many of the other performance, safety, stability, scalability, etc. problems.</li>
+                    </ol>
+                </li>
+                <li>
+                    <p>Fix the sandbox-router service. Add durability with Postgres or Redis. Add retry and resume semantics. Add a durable task queue such as RabbitMQ. Merge the credential-proxy into the sandbox-router service. Add semi-durable credential storage (Redis would be sufficient).</p>
+                    <ol>
+                        <li>A non-trivial amount of effort and resources to allocate.</li>
+                        <li>Design seems fundamentally broken and any fix will have to grind against the impedance mismatch between the architecture chosen and the problem being solved-for.</li>
+                        <li>I have serious concerns that this is the most time-consuming option and that it will not produce a worthwhile output.</li>
+                    </ol>
+                </li>
+                <li>
+                    <p>Re-architect the sandbox-router to be a streaming TCP proxy to a sandbox process. Move the state from the router to the sandbox. Create a binary protocol which exposes recovery mechanisms. Delete the credential-proxy.</p>
+                    <ol>
+                        <li>Does not require infrastructure provisioning.</li>
+                        <li>Requires client changes in Seer.</li>
+                        <li>Requires a novel protocol.</li>
+                    </ol>
+                </li>
+            </ol>
+<h2>Design</h2>
+
+<h3>Summary</h3>
+
+- Status: draft.
+- Release target: On or before 2026-08-28
+
+The goal of this design is to provision sandboxes and broker connections between clients and sandboxes in a performant, scalable, secure, and general way. Generality is a stated goal of the design because it restricts the amount of features needed to implement a functioning system and allows us to rely on the platform (Linux) to do most of the work for us.
+
+<h3>Goals</h3>
+
+1. Broker connections between clients and sandboxes.
+2. Enable client managed sandbox properties and lifecycle.
+3. Enable secure AI agent access to private customer source code.
+4. Enable credentialed access to remote resources without exposing credentials to AI agents.
+
+<h3>High Level Architecture</h3>
+
+A stateless proxy brokers requests between a client and Kubernetes and a client and a sandbox. The proxy is capable of creating, updating, and destroying sandbox runtime instances. The proxy is capable of routing bash commands from the client to the sandbox runtime. The proxy exposes the full feature-set of the UNIX process and pipe model wrapped in a framed wire-protocol for performance and correctness reasons. The protocol has a binary format and no defined output structure for stdout/err buffers. The client is expected to interpret the output of the commands it produces to the sandbox.
+
+**Kubernetes orchestration design:**
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor C as Client
+    participant S as Proxy
+    participant DB as Kubernetes
+    
+    rect rgb(240, 248, 255)
+        C->>S: Issue control message (e.g. Create Sandbox)
+        note over S: Translate into kubernetes request
+        S->>DB: Issue Command
+        loop every 200ms
+        S->>DB: Poll progress
+        S-->>C: Report progress
+        end
+        S->>C: Respond pass/fail event.
+    end
+```
+
+**Command execution design:**
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor C as Client
+    participant S as Proxy
+    participant DB as Sandbox
+    
+    rect rgb(240, 248, 255)
+        C->>S: Sandbox command (Raw TCP request)
+        S->>DB: Forward (Raw TCP request)
+        note over DB: Spawn process. Respond stdout/err
+        DB-->>S: Raw TCP bytestream
+        S-->>C: Raw TCP bytestream
+    end
+```
+
+**Network egress credential injection design:**
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant S as Sandbox
+    participant P as Proxy
+    participant I as Internet
+    
+    rect rgb(240, 248, 255)
+        S->>P: All outbound network traffic
+        note over P: Terminate TLS and Translate By Rule Set
+        P->>I: Forward request
+        I-->>P: Respond
+        P-->>S: Respond
+    end
+```
+
+<h3>Technical Details</h3>
+
+<h4>Protocol</h4>
+
+The protocol has three components. The first is a single u8 value at the start of the frame. This is the frame type byte. The second is a 4-byte length delimiter which describes the length of the third component. The third component is an arbitrary byte sequence understood by its target.
+
+The bytes are packed in big endian format:
+
+```jsx
+{type}{length}{bytes...}
+[0x01] [0x00 0x00 0x0c 0xba] [...]
+```
+
+**Frames**
+
+The are four frame types:
+
+1. CONTROL
+2. DATA
+3. STDOUT
+4. STDERR
+
+`STDOUT` and `STDERR` are egress only from the sandbox runtime. They carry stdout/err buffer data to the client. `CONTROL` frames are ingress only and carry Kubernetes instructions to the proxy for it to execute. `DATA` frames are multi-purpose. In the process and pipe model it is an ingress-only `STDIN` stream. In the shell model it is a bi-directional, text-based shell communication channel.
+
+The protocol is framed for a few reasons:
+
+1. It bounds network usage. The client, proxy, and runtime do not need to allocate arbitrarily large buffers. They receive predictably sized buffers and can process the stream at an arbitrarily slow rate. Slow processes are able to emit backlog signals and reduce the input streams speed freeing up bandwidth for other sandboxes.
+2. It enables concurrent interleaving of multiple streams. A proxy can concurrently receive CONTROL and DATA frames. A client can concurrently receive STDOUT and STDERR frames.
+
+Maximum frame size is 1MiB. This is large enough to amortize the cost of a frame and small enough not to be a DOS risk.
+
+<h4>Services</h4>
+
+There are four required services.
+
+1. A service to orchestrate the client (Seer and others).
+2. A service to execute bash commands (sandbox runtime).
+3. A proxy to provision and splice byte streams (sandbox proxy).
+4. A firewall to block requests according to a client-defined network policy and to transform requests according to a client-defined network policy.
+
+The client is uninteresting in this instance. It will not be considered in this document.
+
+<h4>Sandbox Proxy</h4>
+
+The sandbox proxy is a stateless forwarding proxy and Kubernetes orchestration system. It accepts Kubernetes `CONTROL` messages and emits cluster instructions. It accepts bash command `CONTROL` messages and emits those to the sandbox runtime optionally pumping to the sandbox runtime’s process’s `STDIN` stream using `DATA` frames.
+
+The sandbox proxy blindly forwards `STDOUT`, `STDERR`, and `DATA` frames received from the sandbox. These frames are never inspected.
+
+The sandbox proxy is authenticated with a client generated token. The token is a random value. The sandbox proxy accepts the token and hashes it using the `SHA256` algorithm. The output is the sandbox’s ID. The sandbox ID is publicly accessible and is stored in `etcd`. Authentication and sandbox identification are controlled from the token. Knowing a sandbox ID is not enough to access a sandbox. You must have a sandbox token. Hashing the sandbox token is a predictable one-way operation. Proxies are therefore stateless. Multiple requests may be issued to multiple proxy server’s without impacting the proxy’s ability to resolve the request.
+
+<h4>Sandbox Runtime</h4>
+
+The sandbox runtime spawns a process when given a command and listens on the connection for a `STDIN` stream (if specified by the client). As the process produces output the runtime will emit `DATA`, `STDOUT`, and `STDERR` frames to the proxy which will emit those frames to the client.
+
+The client is responsible for interpreting the output. There is no protocol level parsing of these frame types. Only `CONTROL` frames have a specified structure.
+
+The process spawned by a `CONTROL` message lives as long as the proxy connection lives. If the connection is terminated then the process will also be terminated. The connection’s lifetime is not tied to the process’s. If the pr ocess dies the connection continues on and may continue accepting input.
+
+Sandbox runtimes are capable of accepting multiple connections. Many connections may spawn many processes which produce output to their connected clients.
+
+Sandbox runtimes are capable of producing interactive shells. These are not useful for AI agents but are a capability of the runtime. Human users may use the interactive shell if given the ability to do so.
+
+Sandbox runtimes persist state between commands by using the filesystem or the client’s memory. AI agents do not use persistent, interactive shells. They instead append state to their commands and carry it forward. This is a known pattern in agentic harness development.
+
+<h4>Sandbox Firewall</h4>
+
+The sandbox firewall is a transparent proxy. The sandbox runtime makes requests to the outside world and the firewall MITM’s those requests.
+
+The sandbox firewall is given a network policy at sandbox create time. This policy can allow certain domains, block certain domains, and specify transformations for certain other domains. When a request is received for a domain with a transformation we terminate the TLS, alter the request according to the instruction set, encrypt the request, and forward onto its destination. To terminate TLS in the firewall the sandbox runtime will need a known certificate.
+            <footer>
+                <p><a href="../index.html">Return Home</a></p>
+            </footer>
+        </article>
+    </main>
+</body>
+</html>
