@@ -102,50 +102,53 @@
             <h3>High Level Architecture</h3>
             <p>A stateless proxy brokers requests between a client and Kubernetes and a client and a sandbox. The proxy is capable of creating, updating, and destroying sandbox runtime instances. The proxy is capable of routing bash commands from the client to the sandbox runtime. The proxy exposes the full feature-set of the UNIX process and pipe model wrapped in a framed wire-protocol for performance and correctness reasons. The protocol has a binary format and no defined output structure for stdout/err buffers. The client is expected to interpret the output of the commands it produces to the sandbox.</p>
             <p><strong>Kubernetes orchestration design:</strong></p>
-            <pre><code class="language-mermaid">sequenceDiagram
-    autonumber
-    actor C as Client
-    participant S as Proxy
-    participant DB as Kubernetes
-    
-    rect rgb(240, 248, 255)
-        C->>S: Issue control message (e.g. Create Sandbox)
-        note over S: Translate into kubernetes request
-        S->>DB: Issue Command
-        loop every 200ms
-        S->>DB: Poll progress
-        S-->>C: Report progress
-        end
-        S->>C: Respond pass/fail event.
-    end</code></pre>
+            <pre><code>Client                    Proxy                   Kubernetes
+  |                         |                          |
+  |  1. Control message     |                          |
+  |     (e.g. Create)       |                          |
+  |------------------------>|                          |
+  |                         | Translate into K8s req   |
+  |                         |                          |
+  |                         |  2. Issue command        |
+  |                         |------------------------->|
+  |                         |                          |
+  |            loop every 200ms                        |
+  |                         |  3. Poll progress        |
+  |                         |------------------------->|
+  |  4. Report progress     |                          |
+  |<------------------------|                          |
+  |                         |                          |
+  |  5. Pass/fail event     |                          |
+  |<------------------------|                          |</code></pre>
             <p><strong>Command execution design:</strong></p>
-            <pre><code class="language-mermaid">sequenceDiagram
-    autonumber
-    actor C as Client
-    participant S as Proxy
-    participant DB as Sandbox
-    
-    rect rgb(240, 248, 255)
-        C->>S: Sandbox command (Raw TCP request)
-        S->>DB: Forward (Raw TCP request)
-        note over DB: Spawn process. Respond stdout/err
-        DB-->>S: Raw TCP bytestream
-        S-->>C: Raw TCP bytestream
-    end</code></pre>
+            <pre><code>Client                    Proxy                    Sandbox
+  |                         |                          |
+  |  1. Sandbox command     |                          |
+  |     (raw TCP)           |                          |
+  |------------------------>|                          |
+  |                         |  2. Forward (raw TCP)    |
+  |                         |------------------------->|
+  |                         |     Spawn process.       |
+  |                         |     Respond stdout/err   |
+  |                         |                          |
+  |                         |  3. Raw TCP bytestream   |
+  |                         |<-------------------------|
+  |  4. Raw TCP bytestream  |                          |
+  |<------------------------|                          |</code></pre>
             <p><strong>Network egress credential injection design:</strong></p>
-            <pre><code class="language-mermaid">sequenceDiagram
-    autonumber
-    participant S as Sandbox
-    participant P as Proxy
-    participant I as Internet
-    
-    rect rgb(240, 248, 255)
-        S->>P: All outbound network traffic
-        note over P: Terminate TLS and Translate By Rule Set
-        P->>I: Forward request
-        I-->>P: Respond
-        P-->>S: Respond
-    end</code></pre>
+            <pre><code>Sandbox                   Proxy                    Internet
+  |                         |                          |
+  |  1. Outbound traffic    |                          |
+  |------------------------>|                          |
+  |                         | Terminate TLS and        |
+  |                         | translate by rule set    |
+  |                         |                          |
+  |                         |  2. Forward request      |
+  |                         |------------------------->|
+  |                         |  3. Respond              |
+  |                         |<-------------------------|
+  |  4. Respond             |                          |
+  |<------------------------|                          |</code></pre>
             <h3>Technical Details</h3>
             <h4>Protocol</h4>
             <p>The protocol has three components. The first is a single u8 value at the start of the frame. This is the frame type byte. The second is a 4-byte length delimiter which describes the length of the third component. The third component is an arbitrary byte sequence understood by its target.</p>
