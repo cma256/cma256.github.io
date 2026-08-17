@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../style.css">
+    <title>Autonomous Agentic Code Execution</title>
+</head>
+<body>
+    <main>
+        <article>
+            <header>
+                <h1>Autonomous Agentic Code Execution</h1>
+                <p>Published on Sunday, August 16, 2026</p>
+            </header>
+            <h2>Situation Description</h2>
+            <p>The Seer coding agent downloads a customer's repository, modifies it, and pushes those changes to GitHub. The coding agent does not verify its output through static or runtime analysis. It sometimes verifies its output with the LLM-as-a-judge strategy. The agent runs in a different pod from the customer's repository contents. Agent commands are proxied to the agent sandbox. Today, pull requests opened by the <code>post_process_fixability</code> referrer have a <b>[REDACTED]</b> acceptance rate. <code>slack</code> and <code>api.web</code> referrers have a <b>[REDACTED]</b> acceptance rate. <b>[REDACTED]</b> has a <b>[REDACTED]</b> acceptance rate.</p>
+            <h2>Problem Diagnosis</h2>
+            <h3>No Output Verification</h3>
+            <ol>
+                <li><strong>Static verification.</strong> The agent does not verify its output passes the customer's linter, formatter, type-checker, or other static analysis tooling requirements prior to submitting the change to the customer.</li>
+                <li><strong>Runtime verification.</strong> The agent does not verify its output can compile, run, or pass the test suite before submitting the change to the customer.</li>
+                <li><strong>AI verification.</strong> The agent's output is not judged by another, independent LLM to verify the output's quality prior to submission.</li>
+                <li><strong>CI verification.</strong> The agent does not verify its output passes in the customer's CI. If the pull request fails any of the customer's status checks the agent does not resume, consume the CI runner's output, apply changes from the feedback, and push to the new change set to the customer.</li>
+            </ol>
+            <h3>Functional but Unacceptable Changes</h3>
+            <p>An agent may produce a correct change in isolation while solving only part of the problem. A symptom may be fixed while the root cause still produces the incorrect inputs. Fixing the symptom while leaving the root cause suppresses the error while still leaving the customer vulnerable to the broken code path.</p>
+            <h3>Unresolvable Ambiguity</h3>
+            <p>When the agent encounters an ambiguous decision, one where the correct change depends on intent the repository cannot reveal (such as whether a bug fix should preserve or change user-visible behavior), it has no channel to ask the customer. The agent must guess. A wrong guess produces a change that is well-formed but wrong.</p>
+            <h3>Customer Agent Instructions Ignored</h3>
+            <p>Global <code>AGENTS.md</code> files are never read. Nested <code>AGENTS.md</code> are read only if the agent accesses a file in the directory containing the <code>AGENTS.md</code> file. The agent does not auto-discover, read, or use customer defined <code>SKILLS</code>. Without this information the agent is missing a direct encoding of the customer's intention.</p>
+            <h3>[REDACTED]</h3>
+            <p><i>Several sensitive problems have been redacted from this section.</i></p>
+            <h2>Problem Delimitation</h2>
+            <p>Customers expect a change proposed by Seer to carry the same confidence as a change proposed by a peer. Changes must conform to the repository's standards, they must compile, they must run, and they must pass the test suite. Seer publishes changes it has not checked against any of these. Before a customer sees a proposed change, it should have been verified against their repository's own definition of correct.</p>
+            <p>We will focus exclusively on output verification. The remaining problems are left for other projects.</p>
+            <h2>Strategic Direction</h2>
+            <h3>Candidate Strategies</h3>
+            <p>Candidate strategies are not mutually exclusive with one another.</p>
+            <ul>
+                <li>
+                    <span><strong>Execute customer software in a sandbox</strong> - Install dependencies and run the customer's build scripts, static analysis, and test suite inside the agent environment, letting the agent iterate on failures before publishing.</span>
+                    <ul>
+                        <li>Sub-strategies:
+                            <ul>
+                                <li>Install with <code>detect_env.py</code> and custom build scripts on a universal image.</li>
+                                <li>Install with CI configuration file on a universal image.</li>
+                                <li>Install on a minimal image with an opinionated environment manager such as the nix package manager.</li>
+                                <li>AI-guided installation on a universal image.
+                                    <ul>
+                                        <li>The <strong>[REDACTED]</strong> approach.</li>
+                                    </ul>
+                                </li>
+                            </ul>
+                        </li>
+                    </ul>
+                </li>
+                <li><strong>Execute customer software on their machine</strong> - The customer's development machine already has a functioning build which can be used to verify our agent's output. The coding agent's commands are sent to the customer's machine and the results of the commands are sent back to Sentry.</li>
+                <li><strong>Execute customer software on a shared third-party's machine</strong> - Services such as <i>GitHub CoPilot</i> and <i>GitLab Duo Agent Platform</i> re-use the customer's CI configuration to build a development environment within their infrastructure. The cost of the environment is borne by the customer. Third-party agent harnesses are allowed to execute commands within the environment.</li>
+                <li><strong>Reuse the customer's CI</strong> - Publish to a draft branch and read the customer's existing CI results as the feedback signal, rather than reproducing their build ourselves.</li>
+                <li><strong>Static analysis only</strong> - Run language-aware tooling (type checkers, linters) that does not require a full, working build of the customer's software.</li>
+                <li><strong>LLM as a judge</strong> - Run a judging agent which takes one agent's output and verifies that the output matches its expectations and the customer's expectations based on their repository's configuration.</li>
+                <li><strong>Universal Image Only</strong> - Sentry provides a universal image to the agent which can run arbitrary code for the set of pre-installed languages but does not execute the customer's software. The agent is expected to test the software it writes in isolation.</li>
+                <li><strong>Do nothing</strong> - Always a valuable strategy to evaluate.</li>
+            </ul>
+            <h3>Evaluation Criteria</h3>
+            <p>The evaluation criteria are every reasonable metric by which we can judge a potential solution. Not every criterion is applicable to every solution. A solution's capacity to solve for each criterion is not indicative of that solution's value. The purpose of the matrix is to document trade-offs and to act as a guide in the decision making process.</p>
+            <ol>
+                <li><strong>Untrusted Code Execution.</strong> Installing and executing customer software means executing untrusted code. A maliciously constructed repository could be used to attack Sentry's infrastructure.</li>
+                <li><strong>Environment Satisfiability.</strong> We may not be able to construct an environment that can build the customer's software at all. The repository may lack build instructions (informal, unpublished, or proprietary internal tooling). The build ecosystem is vast and unconstrained. Build systems (<code>make</code>), language tooling (<code>uv</code>, <code>pip</code>), and environment managers (<code>nix</code>) compose into an unbounded space of build semantics. The required host may be unsupportable: a Windows machine, a specific Linux distribution, or specialized hardware (GPUs/NPUs/TPUs, large core counts, large reserved memory pool).</li>
+                <li><strong>Build Determinism & Verifiability.</strong> Even when a build is possible, its result may not be trustworthy or repeatable. Third-party package providers are unpaid, unaware of our usage, and may rate-limit, throttle, or fail under Sentry's load. Dependencies may be mutable or unavailable, producing different outputs run to run. A success in the agent environment may not translate to CI or production. The build may produce an artifact that isn't representative of what the customer expects, and is incapable of running their static analysis, compiler, or test suite.</li>
+                <li><strong>Resource Economics.</strong> Customer builds may consume significant compute or idle on slow networks while bootstrapping. Unsatisfiable environments, non-reproducible builds, and unusable artifacts all consume resources without providing value.</li>
+                <li><strong>Feedback Loop Latency.</strong> A common agent pattern is to utilize the write, run, observe, revise loop. A strategy's value depends on how fast and how often the agent can verify its work and if it can verify it within a single session.</li>
+                <li><strong>Output Quality.</strong> How much does the strategy actually improve the changes customers receive?</li>
+                <li><strong>Required Level of User Effort.</strong> How much configuration, onboarding, or ongoing participation does the strategy demand from the customer before it delivers value?</li>
+                <li><strong>Customer Coverage.</strong> What fraction of customer repositories can the strategy serve? Language ecosystems, build tooling, and other requirements all narrow the set of repositories a given approach can handle.</li>
+                <li><strong>Customer Familiarity.</strong> Does the strategy behave in ways customers already understand and trust?</li>
+                <li><strong>Graceful Degradation.</strong> Builds are, potentially, a non-deterministic process. Failures and partial failures are expected. Given a particular approach how capable is this approach of retaining capabilities in the presence of faults.</li>
+                <li><strong>Setup Cost and Cache-ability.</strong> How expensive is the initial environment construction, and can that work be amortized across sessions?</li>
+                <li><strong>Work Requirements and Maintenance Cost.</strong> How much engineering effort does the strategy require from Sentry to build, and what is the ongoing burden of keeping it working? Approaches that track a vast, evolving ecosystem (build tools, language versions, package registries) carry a permanent maintenance tax, while narrower approaches may be cheaper to sustain but deliver less.</li>
+                <li><strong>Agent Network Requirement</strong>. Does this strategy require an LLM to have network access?</li>
+            </ol>
+            <h3>Decision Matrix</h3>
+            <p><strong>Please read.</strong></p>
+            <p>Below I've linked a decision matrix. In it the columns represent possible approaches we might take and the rows represent the criteria that can, should, or must be satisfied. Each cell documents how a particular approach solves a particular criterion. Cells are color-coded to indicate, at a glance, how well a particular approach solves the criterion (fully, partially, not at all).</p>
+            <p>Decision Matrix: <a href="#">[REDACTED]</a></p>
+            <h2>Design</h2>
+            <p><strong>[REDACTED]</strong></p>
+            <h2>Questions</h2>
+            <p><i>As we're thinking about a situation we will have questions. They can be good or bad, related or unrelated. Tracking these questions can inform a broadening of the situation description which cascades into all the other problem-solving stages.</i></p>
+            <p><i>Typically there would be a large set of questions here. Some answered and some not. This section has been redacted in full.</i></p>
+            <footer>
+                <p><a href="../index.html">Return Home</a></p>
+            </footer>
+        </article>
+    </main>
+</body>
+</html>
