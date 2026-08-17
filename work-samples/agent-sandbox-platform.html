@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="../style.css">
     <title>Agent Sandbox Platform</title>
 </head>
+
 <body>
     <main>
         <article>
@@ -21,15 +23,15 @@
             <h3>Process Local Task State</h3>
             <p>“Coding Tasks” are stored in-memory within a sandbox-router server and are not replicated to the other sandbox-router servers. Requests to GET /coding-tasks/{id} will 404 unless the load balancer is smart enough (or lucky enough) to route the request to the correct server (not configured). The sandbox-router is currently deployed to S4S2 with the replica count set to 2.</p>
             <h3>Process Local Credential State</h3>
-            <p>Git tokens are stored in memory within the credential-proxy. A credential-proxy restart will invalidate every sandbox's API key. The credential-proxy is written under the assumption it is single-server, never crashes, and never redeploys. If multiple credential-proxy servers are active the sandbox may experience 4XX errors even though its credential is correct.</p>
+            <p>Git tokens are stored in memory within the credential-proxy. A credential-proxy restart will invalidate every sandbox's API key. The credential-proxy is written under the assumption it is single-server, never crashes, and never redeploys. If multiple credential-proxy servers are active the sandbox may experience 4XX errors even though the credential was set in the proxy.</p>
             <h3>Unbounded Sandbox Router Memory Usage</h3>
-            <p>Tasks are never evicted from the in-memory _tasks dictionary. If the sandbox-router lives long enough it will eventually consume all of its allocated memory.</p>
+            <p>Tasks are never evicted from the in-memory "_tasks" dictionary. If the sandbox-router lives long enough it will eventually consume all of its allocated memory.</p>
             <h3>Tasks Are Not Durable</h3>
             <p>Tasks are stored in-memory. Failure or redeployment of a sandbox-router node will incur data loss.</p>
             <h3>Tasks Are Not Idempotent</h3>
-            <p>A coding-task may be scheduled but never return a response to the client. The client is unable to idempotently retry the task or otherwise resume the connection. Idempotency is particularly important because task commands can mutate the state of the sandbox. Duplicate commands can leave the sandbox in an undefined state.</p>
+            <p>A coding-task may be scheduled but never return a response to the client. The client is unable to idempotently retry the task or otherwise resume the connection. Duplicate commands may leave the sandbox in an undefined state.</p>
             <h3>Tasks Can Not Be Resumed</h3>
-            <p>On sandbox-router failure or re-deployment, the sandbox server is still active and processing the client's request. The client has no capability of re-establishing its connection to the sandbox. The sandbox and sandbox-router have no mechanism for negotiating session recovery.</p>
+            <p>On sandbox-router failure or re-deployment, the sandbox server is still active and processing the client's request. The client has no ability to re-establish its connection to the sandbox. The sandbox and sandbox-router have no mechanism for negotiating session recovery.</p>
             <h3>Task Cleanup is Best-Effort</h3>
             <p>Cleanup failures are swallowed and never retried. Failure to retry exceptions could orphan resources.</p>
             <h3>Incomplete Task Cleanup During Redeploy</h3>
@@ -201,4 +203,5 @@
         </article>
     </main>
 </body>
+
 </html>
