@@ -15,29 +15,38 @@
                 <h1>A Unified Source Code Management Platform</h1>
                 <p>Published on Monday, August 3, 2026</p>
             </header>
-            <p>In this article I will describe the architecture I chose for the unified source code management platform, the situation that created the demand for its creation, why it works, and how it solved for Sentry's current and future use cases.</p>
-            <h1>Context</h1>
-            <p>Sentry regularly interacts with a broad range of source code management providers. Before the project started, there were some pre-existing facilities for interacting with these service providers in a vendor agnostic way, however, they were (and still are) very much tied to their singular use case. These abstractions are located in the <a href="https://github.com/getsentry/sentry">getsentry/sentry</a> repository and are not accessible to other repositories. Sentry has traditionally been a public, monorepo company but with the introduction of the AI boom Sentry has progressively moved to a private, service-based architecture. The has led to the need to share library code between repositories.</p>
-            <p>In Seer, our private AI-focused repository, a custom GitHub client was developed and used throughout the code base. This client strongly coupled Seer to GitHub but it also posed an interesting question of credential provenance. How do private credentials enter Seer, how are they managed, and how do we ensure this system is secure? The getsentry/sentry respository owned the data and had its own mechanisms for managing credentials. Seer shared none of those capabilities and relied on RPC calls to fetch the credentials from Sentry.</p>
-            <p>These diverging client implementations also had diverging ideas of how requests should be sent to GitHub, what observability should be recorded, what, if any, rate-limits should be applied, how retries should work, and other diverging considerations. New considerations were also being discovered. As Sentry emitted more and more source code management requests we found we were hitting service-provider rate-limits more aggressively. This was particularly concerning because high-value integrations were being rate-limited by newer, low-value integrations. These concerns were so serious that Sentry faced a churn risk from our inability to fairly share resources between our various use cases.</p>
-            <h1>Problem Diagnosis</h1>
-            <p>Given this description of the world let's extract some problems that we might solve. I've gone to the trouble of delimiting the problem-set to only those problems that were solved by this project. There are more problems we could imagine and that could potentially have been solved by this project. Including the set of problems I discovered while in the fact finding process would unnecessarily burden you with too much information.</p>
-            <p>There were problems that were solved by this project which are not included in this set. They were excluded because their Sentry specificity. It would take too much time to explain and so they are omitted.</p>
-            <h2>Strong Repository Coupling</h2>
-            <p>Sentry's source code management abstractions are locked inside the sentry monorepo. These capabilities are not exposed via RPC or by a shared library. Every new repository must implement their own source code management library.</p>
-            <h2>Strong Service Provider Coupling</h2>
-            <p>Existing source code management implementations are strongly coupled to a single service-provider. When adding new service providers, engineers need to modify all of their existing use cases to support each new service provider. These existing use cases might represent years of accumulated decisions and assumptions. It may not be trivial to port behavior to another service-provider.</p>
-            <h2>Ad-hoc Credential Management</h2>
-            <p>Ad-hoc credential management represents a significant security risk. Credential scoping and ownership is considered on a case by case basis and significantly diverges between implementations.</p>
-            <p>Leaving credential management to each repository is not only a security risk but also a significant mental burden on each implementer. Every engineer wishing to fetch credentials needs to learn the same lessons over and over again. These lessons have limited utility outside their scope of concern and are not important for engineers to learn as part of their career and skill development. As a result this work is accurately viewed as menial drudgery to accommodate incidental complexity the engineer does not care about.</p>
-            <h2>Missing Access Control Enforcement</h2>
-            <p>Retreiving credentials is one aspect of authorizing against a service-provider. Sentry also restricts who can access which resources at what time. These access controls may be simple or complex but they must be obeyed.</p>
-            <p>When adding a new repository that needs to interact with source code management service providers, an engineer needs to consider constraints that do not readily reveal themselves in the course of exploring their problem space. Its something you only find out about once you've made a significant error.</p>
-            <h2>Missing Use Case Quotas</h2>
-            <p>To ensure fair sharing between use cases every implementation of a source code management client would need to consider some shared conception of quotas and usage tracking. If these assumptions are not met then fair quota allocation is not possible.</p>
-            <h2>Divergent Observability Characteristics</h2>
-            <p>Of lesser concern is our observability. We'd like to know how many requests we're issuing to a service provider, their shape, the response code, and more. Tracking this in a consistent way gives us the ability to re-use dashboards, runbooks.</p>
-            <h1>Solution</h1>
+            <p>Sentry talks to GitHub, GitLab, and eventually Bitbucket from many places at once: the monolith, Seer, notifications, CI, tests. Each of those places wants the same operations. None of them should own tokens, rate limits, or provider quirks.</p>
+            <p>The Unified Source Code Management Platform is a pip-installable library that makes that constraint the design. Product code never speaks GitHub. It calls typed functions. Those functions run identically whether the process is Sentry, another service, or a unit test. The only thing that changes is who is allowed to touch the network.</p>
+
+            <h2>One set of functions</h2>
+            <p>Callers write the same code everywhere:</p>
+            <pre><code>from scm import actions
+from scm.types import CreatePullRequestCommentProtocol
+
+if isinstance(scm, CreatePullRequestCommentProtocol):
+    actions.create_pull_request_comment(scm, pr_id, body)</code></pre>
+            <p>Inside Sentry, <code>scm</code> is built with <code>SourceCodeManager.make_client</code> and an API client that already holds installation credentials. In Seer it is <code>make_proxy_client</code>. In tests it is a fake provider. The action, the protocol, and the type checker do not care.</p>
+            <p>That is the whole product bet. If a feature can call GitHub some other way, access control is optional. If it cannot, every request goes through one door.</p>
+
+            <h2>Instructions, not RPCs</h2>
+            <p>The usual way to share functions across services is to RPC them. Python's xmlrpc is blocking, does not stream, forbids <code>yield</code>, and does not present the same interface on both sides. We also need to download large repositories. An RPC of domain methods would have grown an endpoint per capability and parsed GitHub JSON on Sentry for work the client already knows how to do.</p>
+            <p>Providers do not call GitHub. They emit instructions: method, relative path, headers, body, params, stream, credentials set. The injected <code>ApiClient</code> is the only thing that executes them.</p>
+            <p>In Sentry those instructions go to api.github.com. Outside Sentry they are HMAC-signed and POSTed to Sentry. Sentry attaches tokens, hits the provider, and streams the response back in 64KiB chunks. It does not parse the body. The client provider parses the bytes exactly as it would if it had called GitHub itself.</p>
+            <p>The library is oblivious to the target. A local Sentry URL instead of GitHub is inconsequential. We receive an HTTP response and apply the same business logic. New capabilities do not need new RPC routes. Writes are never retried. Paths must be relative. Authorization never travels with the client request. Tokens never come back in response headers.</p>
+
+            <h2>Capabilities you can ask for</h2>
+            <p>Not every provider implements every operation. A single god interface would lie. Each operation is a <code>@runtime_checkable</code> protocol. The <code>Facade</code> base class has none of those methods, so an unguarded call fails typecheck.</p>
+            <p>At construction we generate a private subclass that copies onto the class body only the methods the provider actually implements. Python 3.12's <code>isinstance</code> inspects the class body, not <code>__getattr__</code>, so <code>isinstance(scm, CreateIssueCommentProtocol)</code> is true only when the method is real. After the guard, MyPy narrows. GitLab can lag GitHub without anyone sprinkling <code>hasattr</code> or <code># type: ignore</code>.</p>
+            <p>Adding a capability is implementing it on the provider. The facade picks it up. <code>actions.py</code> takes the protocol, not the manager, so partial fakes typecheck and unsupported operations are uncallable.</p>
+
+            <h2>One door for access</h2>
+            <p>Credentials, rate limits, kill switches, caching, and observability belong in one place because there is no other HTTP path. The library defines the choke points. Sentry implements policy on the in-process client and on the RPC server's fetchers.</p>
+            <p>The repository must exist, be active, and belong to the caller's org. Org mismatch looks like a 404 so you cannot probe other orgs. RPC is HMAC over identity on GET and over the body on POST. The proxy is not an open relay: relative paths only, inbound headers limited to <code>accept</code>, <code>content-type</code>, and <code>if-none-match</code>, a 10MB body cap. The client sends <code>installation</code> or <code>application</code>; Sentry picks the token. A referrer tags every metric so quota can be partitioned by feature.</p>
+            <p>Conditional GET lives in the instruction schema. Application cache, kill switches, and token refresh live in Sentry. If a service used PyGithub directly, none of this would apply. The proxy exists so it cannot.</p>
+
+            <h2>A library, not a service</h2>
+            <p>Instantiating <code>SourceCodeManager</code> requires an API client. That client decides whether actions hit a provider, Sentry, or a mock. The package has no Sentry SDK dependency. Metrics and error emission are injected. Anyone who agrees to the license can use it.</p>
+            <p>Product code should be unable to speak GitHub. It speaks protocols. Providers compile that into HTTP. An injected client is the only thing that can attach secrets. In Sentry that client is the integration stack. Outside Sentry it is a streaming HMAC proxy that runs the same client on Sentry's side and returns raw bytes. Tests inject a fake that never leaves process. One set of functions, three runtimes, one security boundary.</p>
             <footer>
                 <p>
                     <a href="../index.html">Return Home</a>
