@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../style.css">
+    <title>A Snuba to EAP Transpiler</title>
+</head>
+<body>
+    <main>
+        <article>
+            <header>
+                <h1>A Snuba to EAP Transpiler</h1>
+                <p>Published on Sunday, August 20, 2026</p>
+            </header>
+            <p>Snuba is Sentry's SQL querying library. It has an SDK which enables programmatic query construction with AST nodes. A fully expaneded Snuba query might look like this:</p>
+            <p><pre><code>Query(
+    where=Or(
+        [
+            Condition(Column("int"), Op.EQ, 2),
+            Condition(Column("str"), Op.EQ, "a")
+        ]
+    )
+)</code></pre></p>
+            <p>The Query instance is eventually compiled to a string and sent to the database. Snuba has been around a while so most of Sentry is built with it. There are mountains of legacy code which rely on Snuba.</p>
+            <p>With the introduction of the Event Analytics Platform -- Sentry's newest database and newest way of querying databases -- this older Snuba syntax would no longer be valid. Developers would be expected to write their query ASTs in a new Protobuf syntax.</p>
+            <p><pre><code>request = TraceItemTableRequest(
+    where=TraceItemFilter(
+        and_filter=AndFilter(
+            filters=[
+                TraceItemFilter(
+                    or_filter=OrFilter(
+                        filters=[
+                            TraceItemFilter(
+                                comparison_filter=ComparisonFilter(
+                                    key=AttributeKey(
+                                        name="int", type=AttributeKey.TYPE_INT
+                                    ),
+                                    op=ComparisonFilter.OP_EQUALS,
+                                    value=AttributeValue(val_int=2),
+                                )
+                            ),
+                            TraceItemFilter(
+                                comparison_filter=ComparisonFilter(
+                                    key=AttributeKey(
+                                        name="str", type=AttributeKey.TYPE_STRING
+                                    ),
+                                    op=ComparisonFilter.OP_EQUALS,
+                                    value=AttributeValue(val_str="a"),
+                                )
+                            ),
+                        ]
+                    )
+                )
+            ]
+        )
+    )
+)</code></pre></p>
+            <p>This is an exact one-to-one re creation of the Snuba query I gave above. The new AST is significantly more verbose and requires appending column-type information when querying. This new model is a strict subset of Snuba's capabilities so we've sacrificed some of Snuba's capabilities in exchange for better, faster, smoother operation. The real problem with this new syntax are the mountains of code I mentioned earlier. They need to be migrated. And, in a time before LLMs, this was something a truly lazy engineer would never tolerate.</p>
+            <p>In that spirit, I set out to transpile my Snuba queries to EAP. EAP being a strict subset of Snuba made it the perfect transpilation target, and, in about a day's effort, I managed to produce a few recursive functions which could translate Snuba ASTs to EAP ASTs. This let me retain the years of queries, and other supporting code, I'd written when building the Session Replay product. Migration to the EAP platform could happen all at once with the flip of a switch. It was something we could A/B test and instantly rollback if we discovered problems.</p>
+            <p>One of the things I particularly like about my querying system over the alternative is the Python native way I exposed requirements to the programmer. Ignoring the Snuba SDK imports, you could query EAP with just a Snuba query and the <strong><code>query/4</code></strong> function defined in the transpiler module. I made significant use of string literals, typed dictionaries, and Python native data types to describe operations. For example, columns have a type which must be defined. What better way than a map? <code>{"a": str, "b": int, "c": bool}</code>. There are no types to import or remember. Rather than require dates to be provided as strings I allowed developers to specify them as Python native datetime types. The transpiler would handle transforming these dates into the correct string format.</p>
+            <p>The transpiler didn't only work for Session Replay. It covered EAP's entire surface area so any product in Sentry could use it. That meant I was the only person at Sentry who had to learn this new syntax and everyone else could go on about their merry day having learned nothing at all. I'm not aware of anyone who took me up on the offer but the offer was there! I even tried to pawn it off onto the EAP team but they were understaffed and uninterested. Oh well! It served me well. It transformed weeks of effort and validation into a single day's chore.</p>
+            <p>For the curious, the <a href="https://github.com/getsentry/sentry/blob/master/src/sentry/replays/lib/eap/snuba_transpiler.py">transpiler</a> is available on GitHub.</p>
+            <footer>
+                <p><a href="../index.html">Return Home</a></p>
+            </footer>
+        </article>
+    </main>
+</body>
+</html>
