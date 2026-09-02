@@ -58,24 +58,18 @@
             <p>Among this list, there are few problems which can or should be avoided. Task resumption is not security or correctness critical. We could tolerate a coarser strategy of terminating the disconnected sandbox and starting a fresh session.</p>
             <h2>Strategic Direction</h2>
             <p>The sandbox-router assumes too much responsibility and can not possibly accommodate all of the roles it has taken on. It assumes ownership of resources it should not and does not appropriately guard those resources.</p>
-            <p>We have three options:</p>
-            <ol>
-                <li>Let the thing limp its way into production and accept the failures as the cost of operation.</li>
-                <li>Fix the service. Adopt its CRUD-style architecture. Add durable stores and message queues to facilitate its mode of operation.</li>
-                <li>Re-architect the service. Accept that the design is too resource intensive and flawed to deploy to production. Adopt an alternative approach more suited to the problem space.</li>
-            </ol>
-            <p>The first option is unacceptable, in my opinion. However, it will be considered as a point of comparison.</p>
             <h3>Candidate Strategies</h3>
+            <p>The three candidate strategies can be described as "do nothing", "fix it", and "replace it".</p>
             <ol>
                 <li>
                     <p>Run the existing sandbox-router service as a single server. Merge the credential-proxy into the sandbox-router service.</p>
                     <ol>
-                        <li>Solves <i>some</i> of the serious distributed system questions.</li>
-                        <li>Does not resolve many of the other performance, safety, stability, scalability, etc. problems.</li>
+                        <li>Solves the serious distributed system concerns by no longer being a distributed system.</li>
+                        <li>This does not resolve any of the other performance, safety, stability, or scalability problems.</li>
                     </ol>
                 </li>
                 <li>
-                    <p>Fix the sandbox-router service retaining its current architecture. Add durability with Postgres or Redis. Add retry and resume semantics. Merge the credential-proxy into the sandbox-router service. Add durable credential storage with strong security and TTL guarantees.</p>
+                    <p>Fix the sandbox-router service retaining its current architecture. Add session durability with Postgres or some other suitable state store. Add retry and resume semantics. Add durable credential storage with strong security and TTL guarantees.</p>
                     <ol>
                         <li>A non-trivial amount of effort and resources to allocate.</li>
                         <li>Design seems fundamentally broken and any fix will have to grind against the impedance mismatch between the architecture chosen and the problem being solved-for.</li>
@@ -83,11 +77,12 @@
                     </ol>
                 </li>
                 <li>
-                    <p>Re-architect the sandbox-router to be a streaming proxy between a sandbox runtime and its client. Move the session state from the router to the sandbox. Create a binary protocol which exposes recovery mechanisms and can efficiently transport bi-directional streams of binary data. Temporarily delete the credential-proxy. Our current use case can be satisfied without it if the client has an efficient way to send customer data to the sandbox runtime.</p>
+                    <p>Re-architect the sandbox-router to be a streaming proxy between a sandbox runtime and its client. Move the session state from the router to the sandbox. Create a binary protocol which exposes recovery mechanisms and can efficiently transport bi-directional streams of binary data. Temporarily delete the credential-proxy. Our current product requirements can be satisfied without it.</p>
                     <ol>
                         <li>Does not require infrastructure provisioning.</li>
                         <li>Requires client changes in Seer.</li>
                         <li>Requires a novel protocol.</li>
+                        <li>Requires a re-write of the router and sandbox services.</li>
                     </ol>
                 </li>
             </ol>
@@ -103,7 +98,6 @@
                 <li>Broker connections between clients and sandboxes.</li>
                 <li>Enable client managed sandbox properties and lifecycle.</li>
                 <li>Enable secure AI agent access to private customer source code.</li>
-                <li>Enable credentialed access to remote resources without exposing credentials to AI agents.</li>
             </ol>
             <h3>High Level Architecture</h3>
             <p>A stateless proxy brokers requests between a client and Kubernetes and a client and a sandbox. The proxy is capable of creating, updating, and destroying sandbox runtime instances. The proxy is capable of routing bash commands from the client to the sandbox runtime. The proxy exposes the full feature-set of the UNIX process and pipe model wrapped in a framed wire-protocol for performance and correctness reasons. The protocol has a binary format and no defined output structure for stdout/err buffers. The client is expected to interpret the output of the commands it produces to the sandbox.</p>
@@ -172,8 +166,8 @@
                 <li>A service which provision and splice byte streams (sandbox proxy).</li>
             </ol>
             <h4>Sandbox Proxy</h4>
-            <p>The sandbox proxy is a stateless forwarding proxy and Kubernetes orchestration system. It accepts orchestration <code>CONTROL</code> messages and emits Kubernetes cluster instructions. It accepts bash-command <code>CONTROL</code> messages and emits those to the sandbox runtime optionally pumping to the sandbox runtime's process's <code>STDIN</code> stream using <code>STDIN</code> frames.</p>
-            <p>The sandbox proxy blindly forwards <code>STDOUT</code> and <code>STDERR</code> frames received from the sandbox. These frames are never inspected by the sandbox proxy.</p>
+            <p>The sandbox proxy runs a TCP server and acts as a stateless forwarding proxy and Kubernetes orchestration system. It accepts orchestration <code>CONTROL</code> messages and emits Kubernetes cluster instructions. It accepts bash-command <code>CONTROL</code> messages and emits those to the sandbox runtime optionally pumping to the sandbox runtime's process's <code>STDIN</code> stream using <code>STDIN</code> frames.</p>
+            <p>The sandbox proxy blindly forwards <code>STDIN</code>, <code>STDOUT</code>, and <code>STDERR</code> frames. Once the first <code>CONTROL</code> frame containing a shell comamnd is sent the proxy becomes a dumb relay and stops reading packets at all.</p>
             <p>The sandbox proxy is authenticated with a client generated token. In the reference implementation, the token is a random 128-bit value. The exact token specification is up to the client to decide. The sandbox proxy accepts the token and hashes it using the <code>SHA256</code> algorithm. The output is the sandbox's ID. The sandbox ID is publicly accessible and is stored in <code>etcd</code>. Authentication and sandbox identification are controlled from the token. Knowing a sandbox ID is not enough to access a sandbox. You must have a sandbox token. Hashing the sandbox token is a predictable one-way operation. Proxies are therefore stateless. Multiple requests may be issued to multiple proxy server's without impacting the proxy's ability to resolve the request.</p>
             <h4>Sandbox Runtime</h4>
             <p>The sandbox runtime runs a TCP server. On connection received, the sandbox spawns a process, executes the command received, and listens on the connection for <code>STDIN</code> frames. If the sandbox received <code>STDIN</code> frames it redirects those frames to the process's <code>STDIN</code> buffer. As the process produces output the runtime will emit <code>STDOUT</code> and <code>STDERR</code> frames to the proxy which, in turn, will emit those frames to the client.</p>
