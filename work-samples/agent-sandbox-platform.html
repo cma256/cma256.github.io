@@ -77,7 +77,7 @@
                     </ol>
                 </li>
                 <li>
-                    <p>Re-architect the sandbox-router to be a streaming proxy between a sandbox runtime and its client. Move the session state from the router to the sandbox. Create a binary protocol which exposes recovery mechanisms and can efficiently transport bi-directional streams of binary data. Temporarily delete the credential-proxy. Our current product requirements can be satisfied without it.</p>
+                    <p>Re-architect the sandbox router to be a stateless, streaming proxy between a sandbox runtime and its client. Move the session state from the router to the sandbox. Create a binary protocol which exposes recovery mechanisms and can efficiently transport bi-directional streams of binary data. Temporarily delete the credential-proxy. Our current product requirements can be satisfied through the client.</p>
                     <ol>
                         <li>Does not require infrastructure provisioning.</li>
                         <li>Requires client changes in Seer.</li>
@@ -90,15 +90,8 @@
             <h3>Summary</h3>
             <ul>
                 <li>Status: draft.</li>
-                <li>Release target: On or before 2026-08-28</li>
             </ul>
-            <p>The goal of this design is to provision sandboxes and broker connections between clients and sandboxes in a performant, scalable, secure, and general way. Generality is a stated goal of the design. We need to implement a simple system that can quickly achieve a "completed" state. Product specific requirements are omitted from this design. All extant product requirements are satisfiable from the client and do not require special modification to the router or the sandbox runtime.</p>
-            <h3>Goals</h3>
-            <ol>
-                <li>Broker connections between clients and sandboxes.</li>
-                <li>Enable client managed sandbox properties and lifecycle.</li>
-                <li>Enable secure AI agent access to private customer source code.</li>
-            </ol>
+            <p>The goal of this design is to provision sandboxes and broker connections between clients and sandboxes in a performant, scalable, secure, and general way. Generality is a stated goal of the design with product specific requirements omitted. All extant product requirements will be satisfiable from the client and do not require special modification to the router or the sandbox runtime.</p>
             <h3>High Level Architecture</h3>
             <p>A stateless proxy brokers requests between a client and Kubernetes and a client and a sandbox. The proxy is capable of creating, updating, and destroying sandbox runtime instances. The proxy is capable of routing bash commands from the client to the sandbox runtime. The proxy exposes the full feature-set of the UNIX process and pipe model wrapped in a framed wire-protocol for performance and correctness reasons. The protocol has a binary format and no defined output structure for stdout/err buffers. The client is expected to interpret the output of the commands it produces to the sandbox.</p>
             <p><strong>Kubernetes orchestration design:</strong></p>
@@ -126,21 +119,25 @@
             <pre><code>Client                    Proxy                    Sandbox
   |                         |                          |
   |  1. Sandbox command     |                          |
-  |     (raw TCP)           |                          |
   |------------------------>|                          |
-  |                         |  2. Forward (raw TCP)    |
+  |                         |  2. Forward              |
   |                         |------------------------->|
   |                         |     Spawn process.       |
   |                         |     Respond stdout/err   |
+  +---loop until proc exit--+--------------------------+
   |                         |                          |
-  |                         |  3. Raw TCP bytestream   |
+  |    framed input and     |    output stream         |
+  |<----------------------->|<------------------------>|
+  |                         |                          |
+  +-------------------------+--------------------------+
+  |                         |                          |
+  |                         |  5. exec.exit event      |
   |                         |<-------------------------|
-  |  4. Raw TCP bytestream  |                          |
+  |  6. exec.exit event     |                          |
   |<------------------------|                          |</code></pre>
             <h3>Technical Details</h3>
             <h4>Protocol</h4>
-            <p>The protocol has three components. The first is a single u8 value at the start of the frame. This is the frame type byte. The second is a 4-byte length delimiter which describes the length of the third component. The third component is an arbitrary byte sequence understood by its target.</p>
-            <p>The bytes are packed in big endian format:</p>
+            <p>The protocol has three components. The first is a frame type byte. It is a single u8 value at the start of the frame which describes the type of message encoded. The second is a 4-byte big-endian length delimiter which describes the length of the third component. The third component is an arbitrary byte sequence understood by its target.</p>
             <pre><code>{type}{length}{bytes...}
 [0x01] [0x00 0x00 0x0c 0xba] [...]</code></pre>
             <p><strong>Frames</strong></p>
@@ -151,11 +148,11 @@
                 <li>STDOUT</li>
                 <li>STDERR</li>
             </ol>
-            <p><code>STDOUT</code> and <code>STDERR</code> are egress only from the sandbox runtime. They carry sandbox process output to the client. <code>STDIN</code> frames are ingress only and carry data which is piped into the sandbox process's <code>STDIN</code> buffer. <code>CONTROL</code> frames are ingress only and carry Kubernetes instructions to the proxy and bash commands to the sandbox runtime. <code>CONTROL</code> frame instructions are JSON encoded and have a known schema.</p>
-            <p>The protocol is framed for a few reasons:</p>
+            <p><code>STDOUT</code> and <code>STDERR</code> are egress only from the sandbox runtime. They carry sandbox process output to the client. <code>STDIN</code> frames are ingress only and carry data which is piped into the sandbox process's <code>STDIN</code> buffer. <code>CONTROL</code> frames carry Kubernetes instructions to the proxy, bash commands to the sandbox runtime, and process . <code>CONTROL</code> frame instructions are JSON encoded and have a known schema. On process exit a <code>CONTROL</code> frame is emitted from the sandbox with the process's exit code.</p>
+            <p>The protocol is framed for several reasons:</p>
             <ol>
-                <li>It bounds network usage. The client, proxy, and runtime do not need to allocate arbitrarily large buffers. They receive predictably sized buffers and can process the stream at an arbitrarily slow rate. Slow processes are able to emit back-pressure signals and reduce the input streams speed freeing up bandwidth for other sandboxes.</li>
-                <li>It enables concurrent interleaving of multiple streams. A proxy can concurrently receive CONTROL and STDIN frames from a single client. A client can concurrently receive STDOUT and STDERR frames from its sandbox.</li>
+                <li>It bounds resource usage. The client, proxy, and runtime do not need to allocate arbitrarily large buffers. They receive predictably sized buffers and can process the stream at an arbitrarily slow rate. Slow processes are able to emit back-pressure signals and reduce the input streams speed freeing up bandwidth for other sandboxes.</li>
+                <li>It enables concurrent interleaving of multiple streams. A proxy can concurrently receive <code>CONTROL</code> and <code>STDIN</code> frames from a single client. A client can concurrently receive <code>STDOUT</code> and <code>STDERR</code> frames from its sandbox.</li>
             </ol>
             <p>Maximum frame size is 1MiB. This is large enough to amortize the cost of a frame and small enough not to be a DOS risk.</p>
             <h4>Services</h4>
@@ -166,15 +163,15 @@
                 <li>A service which provision and splice byte streams (sandbox proxy).</li>
             </ol>
             <h4>Sandbox Proxy</h4>
-            <p>The sandbox proxy runs a TCP server and acts as a stateless forwarding proxy and Kubernetes orchestration system. It accepts orchestration <code>CONTROL</code> messages and emits Kubernetes cluster instructions. It accepts bash-command <code>CONTROL</code> messages and emits those to the sandbox runtime optionally pumping to the sandbox runtime's process's <code>STDIN</code> stream using <code>STDIN</code> frames.</p>
-            <p>The sandbox proxy blindly forwards <code>STDIN</code>, <code>STDOUT</code>, and <code>STDERR</code> frames. Once the first <code>CONTROL</code> frame containing a shell comamnd is sent the proxy becomes a dumb relay and stops reading packets at all.</p>
-            <p>The sandbox proxy is authenticated with a client generated token. In the reference implementation, the token is a random 128-bit value. The exact token specification is up to the client to decide. The sandbox proxy accepts the token and hashes it using the <code>SHA256</code> algorithm. The output is the sandbox's ID. The sandbox ID is publicly accessible and is stored in <code>etcd</code>. Authentication and sandbox identification are controlled from the token. Knowing a sandbox ID is not enough to access a sandbox. You must have a sandbox token. Hashing the sandbox token is a predictable one-way operation. Proxies are therefore stateless. Multiple requests may be issued to multiple proxy server's without impacting the proxy's ability to resolve the request.</p>
+            <p>The sandbox proxy runs a TCP server and acts as a stateless forwarding proxy and Kubernetes orchestration system. It accepts orchestration <code>CONTROL</code> messages and emits Kubernetes cluster instructions. It accepts bash-command <code>CONTROL</code> messages, splices the connections, and emits the control message to the sandbox runtime. Once the sandbox relay is established, the client will optionally pump the sandbox runtime's process's <code>STDIN</code> stream by emitting <code>STDIN</code> frames. The proxy does not read these frames. Once the relay is established bytes flow back and forth without proxy intervention.</p>
+            <p>Client specified tokens are used to authenticate requests to the sandbox proxy. In the reference implementation, the token is a random 128-bit value. The exact token specification is up to the client to decide. The sandbox proxy accepts the token and hashes it using the <code>SHA256</code> algorithm. The output is the sandbox's ID. The sandbox ID is publicly accessible and is stored in <code>etcd</code>. Authentication and sandbox identification are derived from the token. Knowing a sandbox ID is not enough to access a sandbox. You must have a sandbox token. Hashing the sandbox token is a predictable one-way operation. Proxies are therefore stateless. Multiple requests may be issued to multiple proxy server's without impacting the proxy's ability to resolve the request.</p>
             <h4>Sandbox Runtime</h4>
-            <p>The sandbox runtime runs a TCP server. On connection received, the sandbox spawns a process, executes the command received, and listens on the connection for <code>STDIN</code> frames. If the sandbox received <code>STDIN</code> frames it redirects those frames to the process's <code>STDIN</code> buffer. As the process produces output the runtime will emit <code>STDOUT</code> and <code>STDERR</code> frames to the proxy which, in turn, will emit those frames to the client.</p>
+            <p>The sandbox runtime spawns a long-lived TCP server. On connection received, the sandbox spawns a process, executes the command received, and listens on the connection for <code>STDIN</code> frames. If the sandbox received <code>STDIN</code> frames it redirects those frames to the process's <code>STDIN</code> buffer. As the process produces output the runtime will emit <code>STDOUT</code> and <code>STDERR</code> frames to the proxy which, in turn, will emit those frames to the client.</p>
+            <p>The runtime will emit two <code>CONTROL</code> messsages during the process's life cycle. It will report process start and exit. On process exit, the return code is encoded into the <code>CONTROL</code> frame response.</p>
             <p>The client is responsible for interpreting the output. Only <code>CONTROL</code> frames have a specified structure.</p>
-            <p>The process spawned by the connection lives as long as the connection does. If the connection is terminated then the process will also be terminated. If the process is terminated the client will receive the return code. It may choose to spawn a new process by emitting another <code>CONTROL</code> message with a bash-command, or it may close its connection.</p>
+            <p>The process spawned by the connection lives as long as the connection does. If the connection is terminated then the process will also be terminated. If the process is terminated first the client will receive the return code. It may choose to spawn a new process by emitting another <code>CONTROL</code> message with a bash command, or it may close its connection.</p>
             <p>Sandbox runtimes are capable of accepting multiple connections. Many connections may spawn many processes which produce output to their connected clients.</p>
-            <p>Sandbox runtimes persist state between commands by using the filesystem or by relying on the client's own memory.</p>
+            <p>Sandbox runtimes persist state between commands by using the filesystem or by relying on the client's memory.</p>
             <footer>
                 <p><a href="../index.html">Return Home</a></p>
             </footer>
