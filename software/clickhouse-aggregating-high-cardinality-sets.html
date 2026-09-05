@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../style.css">
+    <title>ClickHouse: Aggregating High Cardinality Datasets</title>
+</head>
+<body>
+    <main>
+        <article>
+            <header>
+                <h1>ClickHouse: Aggregating High Cardinality Datasets</h1>
+                <p>Published on Sunday, November 30, 2025</p>
+            </header>
+            <p></p>
+            <h2>Separate Search and Data Queries</h2>
+            <p>When writing a query its common to filter the set and select the data you want to receive from that set in the same query. When aggregating by high-cardinality datasets this becomes harder to do because of the physical constraints of the machine.</p>
+            <p>A simple solution to this problem is to search your dataset first, return some meaningful intermediate representation, and then using that intermediate representation query the data you need. In practice this looks something like this:</p>
+            <p><code><pre>-- Preflight Query
+SELECT agg_col
+FROM table
+GROUP BY agg_col
+
+-- Data Query
+SELECT *
+FROM table
+WHERE agg_col IN preflight_results
+GROUP BY agg_col</pre></code></p>
+            <p>This could be expressed other ways (e.g. a subquery) but separating the two can sometimes have nice properties and its easiest to understand for the purposes of the blog.</p>
+            <h2>Stream Filters</h2>
+            <p>Sometimes we can't remove data from our search query. If you want to know if the aggregation state of a column has some property then we're going to need to aggregate the column in some way.</p>
+            <p>There's the naive approach where we ask if google.com exists in the set of grouped urls:</p>
+            <p><code><pre>has(groupArray(url), 'google.com')</pre></code></p>
+            <p>And there's the streaming approach where we ask if some smaller symbolic value exists in the set.</p>
+            <p><code><pre>sum(url = 'google.com') > 0</pre></code></p>
+            <p>Both queries match the same aggregation states however the first filter consumes memory proportional to the sum of all urls in the database whereas the second filter consumes memory proportional to the number of aggregation states multiplied by a small constant factor.</p>
+            <h2>Materialize Columns</h2>
+            <p>Often times we want to know how many times a thing happened. This is useful in many contexts but particularly sorting. Suppose we had some column "error_ids" of type Array(String). If we were to sort the aggregation states by the number of errors per aggregation then we would need to write something like this:</p>
+            <p><code><pre>sum(length(error_ids)) DESC</pre></code></p>
+            <p>This appears fine at first and echoes what we did in the previous section but there's a new problem: transient memory. We need to read the error_ids column in order to determine its length. This is a time consuming (and memory intense) process. In an ideal world ClickHouse can clear this transient memory fast enough that it doesn't become a problem but, for whatever reason (probably very good reasons), this doesn't appear to be the case.</p>
+            <p>We can fix this by materializing the column in advance. We can make it so we'll only ever aggregate a small constant factor. If we materialize the column in our table schema like this:</p>
+            <p><code><pre>`count_errors` UInt8 MATERIALIZED length(error_ids)</pre></code></p>
+            <p>We can target the column directly in our filter or sort expression.</p>
+            <p><code><pre>sum(count_errors) DESC</pre></code></p>
+            <h2>Set Limits</h2>
+            <p>ClickHouse exposes two query configuration parameters called <code>max_rows_to_group_by</code> and <code>group_by_overflow_mode</code>. You can set these parameters to some amount to cap the amount of memory used.</p>
+            <p><code>group_by_overflow_mode</code> is the lesser of the two. You can explore the documentation on your own time. I find it doesn't contribute materially to performance though it may have behavioral implications for your use case. Set it to either <code>break</code> or <code>any</code>.</p>
+            <p><code>max_rows_to_group_by</code> is much more impactful. You set it to a integer value such as <code>1,000,000</code>. It caps the number of aggregation states a single worker will retain and by extension caps the amount of memory you will consume. Ideally this number is as high as possible while still delivering an acceptable experience within a reasonable budget. Some exploration is needed here to determine the value you should adopt.</p>
+            <h2>Measure Improvement</h2>
+            <p>As always, when optimizing anything, measure the performance of your changes. Be methodical. Below is a query and its output for measuring the duration, memory-usage, and number of rows read of a query:</p>
+            <p><code><pre>SELECT
+    query_duration_ms,
+    read_rows,
+    read_bytes,
+    memory_usage,
+    query
+FROM system.query_log
+ORDER BY event_time DESC
+LIMIT 10</pre></code></p>
+            <p><code><pre>┌─time_ms─┬─read_rows─┬─read_bytes─┬─memory_usage─┬─query────────────────┐
+│      24 │    245760 │    7047494 │     14303428 │ WHERE old = 'Safari' │
+│      14 │    286720 │    4874860 │      8743218 │ WHERE new = 'Safari' │
+└─────────┴───────────┴────────────┴──────────────┴──────────────────────┘
+</pre></code></p>
+            <p>Furthermore, ClickHouse ships a benchmarking tool. If you're using the docker image you can execute it by calling the following command: <code>docker exec clickhouse /usr/bin/clickhouse-benchmark</code>. This tool will run your query in a loop measuring its average and p95 times and return various other useful metrics.</p>
+            <h2>Don't Aggregate</h2>
+            <p>Bonus tip. Don't aggregate. You will know things about your dataset that the SQL planner does not. If you receive a query that can be filtered or sorted <i>without applying the GROUP BY clause</i> you should. If this is a customer facing feature then you'll need a sophisticated query optimizer but these things can be easy to handle if applied on a case-by-case basis.</p>
+            <footer>
+                <p>
+                    <a href="../index.html">Return Home</a>
+                </p>
+            </footer>
+        </article>
+    </main>
+</body>
+</html>
