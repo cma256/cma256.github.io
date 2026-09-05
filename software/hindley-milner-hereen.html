@@ -18,27 +18,31 @@
             <p>This tutorial assumes some basic understanding of Rust.</p>
             <h2>Hereen's Implementation</h2>
             <h2>Preamble</h2>
-            <p>Before we can infer the types of an abstract syntax tree we need to define one. We need two types. First we need some recursive representation of an expression hierarchy. Second we need some way of defining types. I've chosen an enum representation. You can choose what you prefer.</p>
+            <p>Before we can start inferring types we need to define a programming language to operate on, or, at the very least, an abstract syntax tree. I'm going to define a recursive enum. Your language may not have enums or your mental model of the problem may be different. Feel free to use whatever data structure you like.</p>
+            <p>I'll also define a "Type" enum. Again, use whatever type you like to describe this structure. All we need is something we can tag nodes in our AST with.</p>
             <p><code><pre>enum Expr {
     Number(i64),
-    Add(Box<Expr>, Box<Expr>)
+    Add(Box&lt;Expr&gt;, Box&lt;Expr&gt;)
 }
 
 enum Type {
     TNumber
 }</pre></code></p>
             <h2>Constraint Generation</h2>
-            <p>Constraints are equations which operate on types. This sounds complicated but equals is the only operator. Generating a constraint implies "this type is equal to that type". The job of a constraint generation algorithm is to recursively walk an AST and assert "T1 == T2". If the two types are not equal the expression does not "unify" and a type error is returned.</p>
+            <p>Generating a constraint implies "this type is equal to that type". The job of a constraint generation algorithm is to recursively walk an AST and assert "T1 == T2". If the two types are not equal the expression does not "unify" and a type error is returned.</p>
             <p>Let's define a type signature for our constraint generation function to get started.</p>
             <p><code><pre>fn generate_constraints(expr: &Expr) -> (Type, Vec&lt;(Type, Type)&gt;)</pre></code></p>
-            <p>We take an expression and we return a type and a vector of type doubles (the constraints). The type we return is the prinicipal type of the expression. The constraints we return constrain that principal type. The principal type is also known as the expression's "most general" type.</p>
+            <p>We take an immutable borrow of the expression (we're not going to modify our AST) and we return a type and a vector of doubles known as the constraints. The type we return is the prinicipal type of the expression. The constraints we return constrain that principal type. The principal type is also known as the expression's "most general" type.</p>
+            <p>The AST I've defined will never generate any constraints. A number is a number. It has no constraints. In the future we'll encounter expressions for which we can not immediately infer a type for. In these cases we'll return a placeholder type which is constrained by the vector of constraints our function returns.</p>
             <p>Okay let's generate constraints for our Number expression:</p>
             <p><code><pre>match expr {
     Expr::Number(_) => (Type::TNumber, vec![])
 }</pre></code></p>
             <p>The return type of the Number expression is TNumber and it generates no constraints. We hard code literals to their type. There's nothing to infer. There are no constraints to solve. A number's most general type is just a number.</p>
-            <p>TNumber is a type but its a certain kind of type. Its a monomorphic type. Mono meaning its only one thing. Its not a number and a string. Its just a number. We'll see polymorphic types later but for now just know that we are only operating on monomorphic types and that makes the algorithm much easier.</p>
-            <p>Next, we'll generate constraints for the addition expression. This is another hard coded type but it will demonstrate the constraint generation process.</p>
+            <p>TNumber is a type but its a certain kind of type. Its a monomorphic type. Mono meaning its only one thing. Its not a number and a string. Its just a number. Polymorphic types can have multiple type expressions. The identity function for example has multiple type expressions:</p>
+            <pre><code>identity: a -> a</code></pre>
+            <p>We expect <code>identity("hello")</code> and <code>identity(12)</code> to pass the type checker and, so, we have our first example of a polymorphic type. Though, we have no way to express it yet. Before we can get there we have a few intermediate steps to get through first.</p>
+            <p>Continuing on, we'll generate constraints for the addition expression. This is another hard coded type but it will demonstrate the constraint generation process.</p>
             <p><code><pre>Expr::Add(left, right) => {
     let (t1, mut cs1) = generate_constraints(left);
     let (t2, mut cs2) = generate_constraints(right);
@@ -51,9 +55,10 @@ enum Type {
 
     (Type::TNumber, constraints)
 }</pre></code></p>
-            <p>Expressions are trees. We need to choose which branch to evaluate first. We picked left but we could have picked right.</p>
-            <p>After evaluating both branches we combine the constraints from both into a single vector and generate a couple more constraints. The addition expression requires its arguments are number types. It pushes that constraint into the list of constraints generated for this function. If you passed a string as the first argument the constraint solver should tell you that a string can not be used in the addition expression.</p>
-            <p>Finally we return the constraints and hard code the fact that addition always returns a number. Not every function can be hard coded but this one can be.</p>
+            <p>Expressions are trees. We need to choose which branch to evaluate first. We picked left but we could have picked right. In traditional Hindley Milner this is the branch we choose when we adopt Algorithm W or M. You're choosing to go left or right. If you go left first you get a type error which says "you can not call function `abc` with an argument of type int". But if you go right first you get a type error which say "expected function with type int -> int but got type str -> int". Its the difference between blaming the argument or blaming the function.</p>
+            <p>Hereen's implementation is all about removing this ordering constraint. You can traverse left or right first. It doesn't matter. We're going to generate a series of constraints and <em>solve</em> them in any order we want. This is Hereen's innovation. We decouple constraint generation from solving. Solving can take the form of "going left" or "going right" or it can be a more complicated type graph which blames the type error on the least common use case. The end goal is better error messages.</p>
+            <p>Returning to the task at hand. After evaluating both branches we combine the constraints from both into a single vector and generate a couple more constraints. The addition expression requires its arguments to be number types. It pushes t1 and t2 into the list of constraints and declares their explicit association to the TNumber type. If you passed a string as the first argument to the addition expression, the constraint solver will tell you that a string can not be used in the addition expression. But it can only do that because we <em>constrained</em> the type.</p>
+            <p>It is by no means required that the "Add" expression must only accept "number" types, or that its principal type should be a number. It could accept integers, floats, strings, and any other iterable type. I've constrained it to numbers because that's how I want my programming language to operate. If you have different goals then you would express those goals in your constraint generation step.</p>
             <h2>Solving Constraints</h2>
             <p>A constraint solver is even easier than a constraint generator (at least for now). We iterate over the constraints and check that they match. If they don't then we raise an error. What could be simpler?</p>
             <p><code><pre>for (c1, c2) in constraints {
@@ -61,7 +66,11 @@ enum Type {
         panic!("How could you have possibly messed this up?")
     }
 }</pre></code></p>
+            <p>Later I will produce a quadratic constraint solver which is moderately more complex than this. You can do much better than quadratic complexity and you can solve constraints in a much better way than I will adopt (left bias). The goal of this article is understanding. The quadratic, left-biased solver is the most straight-forward way to produce this thing, so that's what I've done.</p>
+            <p>If you're following along you should be able to run the program. Create an expression, generate the constraints, and pass those constraints to the solver. If your program panics then you know your expression is not a valid type. If no output was returned then you know there was no type error.</p>
+            <p>We still don't know the prinicipal type of the program. I've not demonstrated how to get that information out of it yet. But since there's only one valid type in our system so far I'm sure you can guess what the principal type is!</p>
             <h2>If Expressions</h2>
+            <p>Let's return to constraint generation for now. We'll generate quite a few more constraints for quite a few more expression types. Constraint generation will be something we return to frequently in this article.</p>
             <p>If expressions contain three subexpressions. The "condition" expression, the "then" expression, and the "else" expression. Alternatively referred to as "consequence" and "alternative".</p>
             <p><code><pre>If(Box&lt;Expr&gt;, Box&lt;Expr&gt;, Box&lt;Expr&gt;)</pre></code></p>
             <p>The if expression has two rules in our language. First, "then" and "else" expressions must have the same type. Second, the "condition" expression must be a boolean type.</p>
@@ -70,7 +79,7 @@ enum Type {
     TNumber,
     TBoolean
 }</pre></code></p>
-            <p>Next we generate constraints for each of the three subexpressions, merge their constraints, apply some of our own constraints, and return a type.</p>
+            <p>Next we'll generate constraints for each of the three subexpressions, merge their constraints, apply some of our own constraints, and return a type.</p>
             <p><code><pre>Expr::If((cond, then, els_)) => {
     let t = tygen.fresh();
 
@@ -89,7 +98,8 @@ enum Type {
 
     (t, constraints)
 }</pre></code></p>
-            <p>The process of generating constraints for if expressions mostly mirrors addition. Where it differs is in the generation of a fresh type variable. Fresh type variables are meaningless placeholders. They do nothing except occupy space until its time until unification.</p>
+            <p>Something weird happened. There's this thing called <code>tygen</code> and its littering its <code>fresh()</code> output everywhere! We've generated a fresh type variable. It's just a number. If this is the first time we've generated a type variable its value is 0. Subsequent generations will increment this value. Some programming languages represent this as <code>'a, 'b, 'c</code> and so on, but this is just a visual representation. Numbers are trivially compared and generated. They're much nicer to work with so that's what we use.</p>
+            <p>The process of generating constraints for if expressions mostly mirrors addition. Where it differs is in the generation of a fresh type variable. I can not express this strongly enough, fresh type variables are meaningless placeholders. They do nothing except occupy space until we solve them. It's an ID for a row in a database or an index in an array or a pointer to memory. The value of these things are immaterial. They're only important in so far as it allows us to communicate about a type at some location in our abstract syntax tree.</p>
             <p>The reason we use a fresh type variable, rather than asserting the "then" and "else" conditions equal each other explicitly, is so we can find the most general type of the expression. Presently this distinction in our program has no value but it will have some value later.</p>
             <p>Let's update our implementation to support fresh type variable generation.</p>
             <p><code><pre>fn generate_constraints(expr: &Expr, tygen: &mut TypeGen) -> (Type, Vec<(Type, Type)>)</pre></code>
