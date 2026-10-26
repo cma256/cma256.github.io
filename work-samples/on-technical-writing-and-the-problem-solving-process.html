@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../style.css">
+    <title>On Technical Writing and Process of Solving Problems</title>
+</head>
+<body>
+    <main>
+        <article>
+            <header>
+                <h1>On Technical Writing and Process of Solving Problems</h1>
+            </header>
+
+            <em>This document was produced for the Sentry engineering department. Its goal was to encourage the creation of thoughtful and well-structured technical design documents, and to facilitate greater participation in the review process by all employees at Sentry.</em>
+
+            <h2>Introduction</h2>
+            <p>This page features a system for writing design documents and some opinions for producing great technical writing. The primary goal of this system is to produce better, more general technical artifacts, invite collaboration, and ensure we're solving real customer problems.</p>
+
+            <h2>Why Bother Reading This Document?</h2>
+            <p>Before I explain the problem solving system, I want to front run a question a skeptical reader might have: <i>why should I bother with this at all</i>?</p>
+            <p>Taking the time to write a well-structured document has a number of benefits.</p>
+            <ol>
+                <li><u><strong>Writing is a form of thinking</strong></u>. Writing, especially in a structured way, has the unique capability of clarifying a topic in our minds. <i>It extends our capabilities</i>. It forces us to acknowledge what we don't know and to engage with the topic at the required level of effort. It produces an artifact that is constrained by the real world; it is not an abstract thought cloud in our minds that subtly (and unknowingly) bends the rules of reality.</li>
+                <li>It makes the process of reviewing documents easier and faster. We can avoid entire categories of conversations, disagreements, and design failures by explicitly documenting our understandings, motivations, and methodologies more clearly.</li>
+                <li>It maximally expands the pool of potential collaborators at your disposal. You will get more reviews and better reviews of your work.</li>
+                <li>The process produces a phased document which invites collaboration at each level. Progress is made incrementally with the broadest level of participation at the beginning. Maximizing participation early prevents us from designing systems that no one wants!</li>
+                <li>Solving problems using this format records the situation you found yourself in, the problems you were able to find (and not find), your values, judgements, and design decisions. This is useful for you (after a long weekend or hiatus), it's useful for your colleagues (who may take over your project), and it's useful as a historic artifact for projects which come <i>after</i> yours.</li>
+                <li>It's deeply unfair and wasteful of our colleagues' time to ask them to read thousands of words of unstructured argument, technical jargon, context-less design, or AI-generated prose. Writing in a well-structured way is a sympathetic act and <i>extends their capabilities</i> as reviewers.</li>
+            </ol>
+
+            <h2>The Six Phases</h2>
+            <p>This section of the document was lifted from Rich Hickey's “<a href="https://www.youtube.com/watch?v=c5QF2HjHLSE">Design in Practice</a>”. If you prefer to watch a presentation rather than read this article, by all means, feel free to do so. All credit for this system should be directed to him.</p>
+            <h3>Overview</h3>
+            <p>Writing a good design document is a five step process with an implied sixth step for reflective inquiry and post-hoc modification to the design.</p>
+            <ol>
+                <li><strong>Situation Description.</strong> What is the state of the world? No problems just facts. An AI agent is performing poorly on our evals. A service is crashing. A service frequently backlogs.</li>
+                <li><strong>Problem Diagnosis.</strong> What problems can we derive? Description: an error is raised in production. Problem: users cannot upgrade their plan, users churn, etc.</li>
+                <li><strong>Restriction.</strong> Which problems are we going to solve? Which problems are we not going to solve? Why? You should exit this stage with a well-formed problem statement.</li>
+                <li><strong>Strategic Direction.</strong> What do we value in a solution? What requirements must any candidate solution meet? What are our candidate strategies? How do these candidate strategies compare to one another?</li>
+                <li><strong>Design.</strong> Given a strategic direction, what are the specifics of the design? What are the components that need to be added? What can be re-used? What are the integration points? What are the infrastructure requirements?</li>
+                <li><strong>Development.</strong> Go do the thing. Did you encounter anything unexpected? Go back and alter the document.</li>
+            </ol>
+            <p>At every stage of this document you will be confronted with a decision: <i>go</i> or <i>no go</i>. You need to <u><strong>decide</strong></u> if the project is worth pursuing.</p>
+            <p>If you've got a small bug or project you may think this system is overkill. Using this system does not have to be an arduous process (though it can be!). You can crank a design document out in fifteen minutes and DM it in Slack. Fifteen minutes is not so large a time in the grand scheme of things. Give it a try even on your small projects.</p>
+            <p><a href="https://app.notion.com/p/3f48b10e4b5d805fbd24c2ac7f65c8ef">Example Problem Solving Document</a></p>
+
+            <h3>Situation Description</h3>
+            <p>A successful design document begins with a shared understanding of the world. The way I understand the world should closely match your own understanding of the world. Otherwise, the problems I derive and designs I create to solve those problems will be totally alien to you.</p>
+            <blockquote>
+                <p>“A: The ‘get_from_cache' method uses Redis 7 as its back-end. Redis 7 has access to <i>foo</i> and <i>bar</i> capabilities.”</p>
+                <p>“B: Actually we use memcached for that method. <i>foo</i> and <i>bar</i> are not available.”</p>
+            </blockquote>
+            <p>Without explicitly spelling out our understanding of the world trivial misunderstandings can amplify into large design errors.</p>
+            <p>A well written situation description must only contain facts. It does not contain problems, features, opinions, recommendations, conjecture, theory, or any other form of subjectivity. We are striving to document reality as closely as we can manage.</p>
+
+            <h3>Problem Diagnosis</h3>
+            <p>This section attempts to identify every relevant, important problem present in our current situation.</p>
+            <p>As Hickey points out the meaning of <i>diagnosis</i> is “to know across”. This will take many forms. You shouldn't get hung up on a specific rule-set for populating this section. In some cases you will fill this section with hypotheses and use the tools of scientific inquiry to provide evidence for those hypotheses. In other cases you will have a set of unmet customer objectives and their obstacles.</p>
+            <p>It is never a valid problem to say “we don't have feature X”. We want to record the problem for which that feature is one possible solution to. We're still in the exploratory phase of the problem solving process. We don't want to constrain our thinking to a particular solution.</p>
+
+            <h3>Restriction</h3>
+            <p>This section's primary output is a problem statement which is a succinct statement of unmet customer objectives. It is <u><strong>not</strong></u> a feature request. To paraphrase Hickey the problem statement is not “we need a toaster” it's “the user wants caramelized bread”. A toaster being one solution to the problem of caramelizing bread.</p>
+            <p>Your problem statement may exclude some of the problems you found in the previous section. It may not address the largest problems. When you decide that you're going to solve <i>this</i> problem instead of <i>that</i> problem or only a subset of one of the problems you found, you should write down your <i>reasons</i>.</p>
+            <p>The concluding statement of this section should be your problem statement. Try to make it obvious what it is you're going to try to solve.</p>
+            <p>For practical instruction, I recommend reading my <a href="./agent-output-verification.html">problem statement</a> written for the Agentic Code Execution Platform.</p>
+
+            <h3>Strategic Direction</h3>
+            <p>In the strategic direction phase we're trying to, at a high level, determine where we're going. One of the classic high-level strategic decisions projects make is the ‘build versus buy' decision. Do we have the capability to build this thing? Is it more cost-effective to buy? What are the outcomes we value?</p>
+            <p>At the end of this stage you should have enumerated some customer use cases, you should have a decision matrix, you should have your project's scope, and you should have chosen the strategic direction of your project.</p>
+            <p>This is a large section and you should spend a lot of time working here. For the purposes of this document I've broken it up into three sub-sections. These sub-sections are <i>techniques</i> you can apply to improve the quality of outputs of this section (and other sections). You do not have to apply any of them. Though, it is recommended that you do.</p>
+
+            <h3>Design</h3>
+            <p>In this section you'll establish a plan for implementation. You will choose technologies, architectures, tools, etc. If you've decided you're going to build an API now its time to decide what that API looks like. What shape it takes, what encoding it uses, etc.</p>
+            <p>A design is not some perfect final output that falls out from all the previous phases. There can be multiple competing designs in this section. Each with their own trade-offs. If you have multiple designs, you'll use all of the tools we've discussed previously (the scientific method, decision matrices, evaluation criteria, user stories, etc) to choose the correct implementation plan.</p>
+            <p>There are lots of design methodologies out there. I won't provide any opinions on what you should do for the purposes of this document.</p>
+            <p>For practical instruction I will again recommend reading the Agentic Code Execution Platform document. Specifically the <a href="./agent-sandbox-platform.html">design</a> section. It contains concrete declarations of data flow, protocol format, and service availability properties that would be expected in such a system.</p>
+
+            <h3>Development</h3>
+            <p>Development is <u><strong>not</strong></u> a written phase of your document. It is the literal code artifact that is produced from your design. This phase exists for one reason: <i>reflective inquiry</i>. As you're implementing your design, you're going to run into obstacles you did not expect. It's in these moments you have the ability to pause and question. Was my design sufficient? Was my problem statement sufficient? Was my understanding of the world flawed or incorrect?</p>
+            <p>I strongly encourage you to <u>write your own code and pull request descriptions</u>. I recognize that is a heretical argument in 2026. Software engineers have been using code generation tools forever. AI is no different. You are allowed to use it; it's helpful. But don't rob yourself of the ability to test the hard parts of your design. Feeling your design grind up against the reality of its environment is a valuable feedback mechanism that is <i>sometimes</i> lost when using AI tools. <u><strong>Use AI judiciously</strong></u>.</p>
+            <p>When you write your pull request descriptions ask yourself: “what did I do”, “what were my goals”, “how did I demonstrate my goals were met”. Often fallacies in your reasoning will only become apparent when you stop and reflect on your actions. I have found many mistakes in my own implementations through this reflective process.</p>
+
+            <h2>Techniques of the Problem Solving Process</h2>
+            <p>Solving problems, communicating effectively with your colleagues, and maximizing both the quantity and quality of feedback your design documents recieve is a learned skill. Within this discipline there are a variety of techniques you can employ to elevate the capabilities of yourself and your peers. I've enumerated a few below. Consider expanding this list with your own additions.</p>
+
+            <h3>Precision in Language</h3>
+            <p>When writing documents the words we choose <strong>matter</strong>.</p>
+            <p><u><strong>Define your terms</strong></u>. Software engineering, like most technical domains, suffers from immense amount of technical jargon. Defining the terms we use is a useful exercise. I don't know what <i>rc-short</i> or <i>rc-processing</i> is but I do know what <i>Redis</i> is. Define your terms.</p>
+            <p><u><strong>Be consistent</strong></u>. Do not use the same term to refer to multiple meanings. If you mean parallel then say parallel. If you mean concurrent then say concurrent. Do not mix meanings.</p>
+            <p><u><strong>Use data</strong></u>. Don't use emotive or imprecise language. “<i>This is slow</i>”, “<i>this is expensive</i>”, “<i>this is bad</i>”. Instead situate your complaint into its context. “<i>This process costs $10 per hour to run</i>”, “<i>This process reduces our gross margin by X%</i>”. With precise communication, your colleagues can provide better, critical feedback. “<i>Actually it costs $9 per hour</i>”, “<i>An X% reduction in margin is not worth pursuing because of reason Y</i>”.</p>
+            <p><u><strong>Share your methodology</strong></u>. When you provide a computed value, provide the steps to reproduce that value. “<i>On average a replay has 12 segments; here's the SQL query: …</i>”. Three years from now I may run your analysis and find the conditions have changed. Replays may now have 10x the number of segments on average. How does that change our perception of the problem?</p>
+
+            <h3>Visual Representations</h3>
+            <p>Many times describing a complex system with words is insufficient. The final output is confusing, overly verbose, and still incomplete. A single image, visualizing the concept you're trying to communicate, can do the work of dozens of paragraphs.</p>
+            <p>Data flows, user journeys, relationship diagrams, etc. can all be visualized with tools like mermaid diagrams, storyboards, decision matrices and more. It is strongly encouraged to provide visual representations where helpful.</p>
+
+            <h3>Decision Matrices</h3>
+            <p>Decision matrices are visual devices which enable us to perform easy cross-comparison between a set of approaches and a set of evaluation criteria. They should always take the form of a spreadsheet.</p>
+            <p>In a decision matrix, the columns of the matrix represent the approaches and the rows of the matrix represent the evaluation criteria. Each cell documents how a particular approach solves a particular criterion. Cells may be color-coded to indicate, at a glance, how well a particular approach solves the criterion (fully, partially, not at all, etc).</p>
+            <p>Some simple rules for effective decision matrix design:</p>
+            <ol>
+                <li>Avoid the “all-green” column. Are you rationalizing? Find the criterion your approach does not quite solve perfectly for.</li>
+                <li>Avoid undistinguished columns. No two approaches share the exact same set of trade-offs. Find the criterion that distinguishes them.</li>
+                <li>Avoid hidden information. All content should be visible.</li>
+                <li>Avoid phrasing criteria as questions. Criteria should be succinct statements we form judgements off of. Questions are reserved for the cells of the table.</li>
+            </ol>
+            <p>For practical instruction I recommend reading my decision matrix written for the <a href="./agent-output-verification.html">Agent Output Verficiation [redacted]</a> design document.</p>
+
+            <h4>Evaluation Criteria</h4>
+            <p>What do we need? What are our values? What are our customers' objectives? Its at this stage you'll want to begin cultivating evaluation criteria. Evaluation criteria are simply the metrics by which you will judge an approach.</p>
+            <p>For practical instruction I recommend reading my evaluation criteria for the <a href="./agent-sandbox-platform.html">Agentic Code Execution Platform</a>.</p>
+
+            <h4>Approaches</h4>
+            <p>Approaches are strategies or decisions that solves for some set of problems. Approaches should solve for at least one of the evaluation criteria you've established (otherwise you wouldn't pursue it). If you have an approach that fits every criterion in your list, try to invent a criterion it <em>doesn't</em> meet. No solution is ever free of trade offs. If you think it is <em>think harder</em>.</p>
+            <p>For practical instruction I recommend reading my candidate strategies for the <a href="./agent-sandbox-platform.html">Agentic Code Execution Platform</a>.</p>
+
+            <h3>Use Cases</h3>
+            <p>Using a spreadsheet you will mark out two columns. The first column is the set of user intentions. This is <u><b>what</b></u> the user wants to accomplish. They are statements of user intent. The second column is <u><b>how</b></u> they'll accomplish these intentions. If you're following A Process for Solving Problems, you will not be able to populate the “how” column until you've chosen a strategic direction.</p>
+
+            <h2>Examples</h2>
+            <p>Here's a list of some documents I've worked on. They're not perfect. Do you also have imperfect examples you'd like to share? Add them here!</p>
+            <ul>
+                <li><a href="./agent-output-verification.html">Agentic Code Execution</a></li>
+                <li><a href="./agent-sandbox-platform.html">Agent Sandbox Rollout</a></li>
+            </ul>
+
+            <footer>
+                <p><a href="index.html">More Work Samples</a> · <a href="../index.html">Return Home</a></p>
+            </footer>
+        </article>
+    </main>
+</body>
+</html>
