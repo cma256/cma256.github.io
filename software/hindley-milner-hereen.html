@@ -4,20 +4,24 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="../style.css">
-    <title>Hindley-Milner Hereen's Way</title>
+    <title>Hindley-Milner Heeren's Way</title>
 </head>
 <body>
     <main>
         <article>
             <header>
-                <h1>Hindley-Milner Hereen's Way</h1>
+                <h1>Hindley-Milner Heeren's Way</h1>
                 <p>Published on Sunday, August 24, 2025 - 8:30 PM CDT</p>
             </header>
-            <p>It's been three months since my last attempt to finish my let-polymorphic, Hindley Milner type inference implementation. Unfortunately, it seems unlikely I'll finish it any time soon. But from that failure comes an opportunity to write, reflect, and preserve whatever I managed to learn.</p>
-            <p>This is a tutorial but be aware the implementation is incomplete. Should you know how to complete the implementation please get in touch! My email is at the top of the index page and there is a comment thread linked in the footer of this page.</p>
-            <p>This tutorial assumes some basic understanding of Rust.</p>
-            <h2>Hereen's Implementation</h2>
-            <h2>Preamble</h2>
+            <p>Online you will find many tutorials in many languages which teach Hindley-Milner's algorithm <code>W</code> and <code>M</code>. These algorithms walk an abstract syntax tree, collect "constraints", and solve those constraints within a single tree walk. There is, however, an alternative way to implement these algorithms. Its possible to decouple constraint solving from constraint generation by separating the two steps into distinct phases. This was noted by Milner in 1978 and first demonstrated by Mitchell Wand in his paper "A simple algorithm and proof for type inference".</p>
+            <p>Heeren's contribution was the addition of let-polymorphism in his paper <a href="https://webdoc.sub.gwdg.de/ebook/serien/ah/UU-CS/2002-031.pdf">Generalizing Hindley-Milner Type Inference
+Algorithms</a>. Not let-polymorphism generally, but let-polymorphism in the context of a factored constraint generation and unification algorithm. Let-polymorphism requires a more complete language for modeling constraints. Heeren introduces the concept of <em>implict</em> and <em>explicit</em> constraints in addition to the standard <em>equality</em> constraints. For this reason studying Heeren's paper is more interesting than studying Mitchell Wand's paper.</p>
+            <p>In fact even Heeren's contributions are out of date as well. Simon Peyton Jones demonstated in his paper <a href="https://www.cambridge.org/core/journals/journal-of-functional-programming/article/practical-type-inference-for-arbitraryrank-types/5339FB9DAB968768874D4C20FA6F8CB6">"Practical type inference for arbitrary-rank types"</a> that the monomorphic-type restriction on lambda arguments could be lifted -- a major alteration to the algorithm I'll lay out below. Didier Rémy introduced <a href="https://okmij.org/ftp/ML/generalization.html">levelled generalization</a> among other innovations. Reading his and Pottier's work <em>The Essence of ML Type Inference</em> in <em>Advanced Topics in Types and Programming Languages</em> would be a significantly better place to start for a production implementation of Hindley Milner type inference.</p>
+            <p>And still more bad news. There is another, newer system which has significant research attention: bidirectional type checking. Refer to the <a href="https://arxiv.org/abs/1908.05839">Bidirectional Typing</a> paper for specifics. I have no personal experience with it, but I can say there is a lot of enthusiasm around the subject. Whether the enthusism translates into more comprehensible concepts and code I can't say.</p>
+            <p>Given these headwinds, why study Heeren? Heeren is a simple introduction to a particular form of Hindley-Milner. Studying it gives you the opportunity to learn about one of the most legendary ideas in computer science. I don't know where Heeren stands in an education plan of type systems. It may be a worthwhile introduction or a historical curiosity.</p>
+            <p>That said, if you're here, you probably have some sense of what you're trying to learn and how you want to go about it. I will do my best to present Heeren's algorithm accurately and in its correct context, but reader beware, I am an interested amateur with no academic experience in this field. Reader discretion advised.</p>
+            <h1>Heeren's Implementation</h1>
+            <h2>Prerequisites</h2>
             <p>Before we can start inferring types we need to define a programming language to operate on, or, at the very least, an abstract syntax tree. I'm going to define a recursive enum. Your language may not have enums or your mental model of the problem may be different. Feel free to use whatever data structure you like.</p>
             <p>I'll also define a "Type" enum. Again, use whatever type you like to describe this structure. All we need is something we can tag nodes in our AST with.</p>
             <p><code><pre>enum Expr {
@@ -29,18 +33,18 @@ enum Type {
     TNumber
 }</pre></code></p>
             <h2>Constraint Generation</h2>
-            <p>Generating a constraint implies "this type is equal to that type". The job of a constraint generation algorithm is to recursively walk an AST and assert "T1 == T2". If the two types are not equal the expression does not "unify" and a type error is returned.</p>
+            <p>Generating a constraint implies "this type is equal to that type". The job of a constraint generation algorithm is to recursively walk an AST and assert "T1 == T2". Crucially it does not <em>prove</em> that T1 equals T2. It just asserts it. If the two types are not equal the expression will not "unify" during the constraint solving phase.</p>
             <p>Let's define a type signature for our constraint generation function to get started.</p>
             <p><code><pre>fn generate_constraints(expr: &Expr) -> (Type, Vec&lt;(Type, Type)&gt;)</pre></code></p>
             <p>We take an immutable borrow of the expression (we're not going to modify our AST) and we return a type and a vector of doubles known as the constraints. The type we return is the prinicipal type of the expression. The constraints we return constrain that principal type. The principal type is also known as the expression's "most general" type.</p>
-            <p>The AST I've defined will never generate any constraints. A number is a number. It has no constraints. In the future we'll encounter expressions for which we can not immediately infer a type for. In these cases we'll return a placeholder type which is constrained by the vector of constraints our function returns.</p>
-            <p>Okay let's generate constraints for our Number expression:</p>
+            <p>The AST I've defined will never generate any constraints. A number is a number. It has no constraints. Soon we'll encounter expressions for which we can not immediately infer a type for. In these cases we'll return a placeholder type which is constrained by the vector of constraints our function returns.</p>
+            <p>Let's start generating constraints for our AST.</p>
             <p><code><pre>match expr {
     Expr::Number(_) => (Type::TNumber, vec![])
 }</pre></code></p>
             <p>The return type of the Number expression is TNumber and it generates no constraints. We hard code literals to their type. There's nothing to infer. There are no constraints to solve. A number's most general type is just a number.</p>
             <p>TNumber is a type but its a certain kind of type. Its a monomorphic type. Mono meaning its only one thing. Its not a number and a string. Its just a number. Polymorphic types can have multiple type expressions. The identity function for example has multiple type expressions:</p>
-            <pre><code>identity: a -> a</code></pre>
+            <pre><code>let identity = \a -> a</code></pre>
             <p>We expect <code>identity("hello")</code> and <code>identity(12)</code> to pass the type checker and, so, we have our first example of a polymorphic type. Though, we have no way to express it yet. Before we can get there we have a few intermediate steps to get through first.</p>
             <p>Continuing on, we'll generate constraints for the addition expression. This is another hard coded type but it will demonstrate the constraint generation process.</p>
             <p><code><pre>Expr::Add(left, right) => {
@@ -55,10 +59,8 @@ enum Type {
 
     (Type::TNumber, constraints)
 }</pre></code></p>
-            <p>Expressions are trees. We need to choose which branch to evaluate first. We picked left but we could have picked right. In traditional Hindley Milner this is the branch we choose when we adopt Algorithm W or M. You're choosing to go left or right. If you go left first you get a type error which says "you can not call function `abc` with an argument of type int". But if you go right first you get a type error which say "expected function with type int -> int but got type str -> int". Its the difference between blaming the argument or blaming the function.</p>
-            <p>Hereen's implementation is all about removing this ordering constraint. You can traverse left or right first. It doesn't matter. We're going to generate a series of constraints and <em>solve</em> them in any order we want. This is Hereen's innovation. We decouple constraint generation from solving. Solving can take the form of "going left" or "going right" or it can be a more complicated type graph which blames the type error on the least common use case. The end goal is better error messages.</p>
-            <p>Returning to the task at hand. After evaluating both branches we combine the constraints from both into a single vector and generate a couple more constraints. The addition expression requires its arguments to be number types. It pushes t1 and t2 into the list of constraints and declares their explicit association to the TNumber type. If you passed a string as the first argument to the addition expression, the constraint solver will tell you that a string can not be used in the addition expression. But it can only do that because we <em>constrained</em> the type.</p>
-            <p>It is by no means required that the "Add" expression must only accept "number" types, or that its principal type should be a number. It could accept integers, floats, strings, and any other iterable type. I've constrained it to numbers because that's how I want my programming language to operate. If you have different goals then you would express those goals in your constraint generation step.</p>
+            <p>Expressions are trees. After evaluating both branches of the tree we combine the constraints from both into a single vector and generate a couple more constraints. The addition expression requires its arguments to be number types. It pushes t1 and t2 into the list of constraints and declares their explicit association to the TNumber type. If you passed a string as the first argument to the addition expression, the constraint solver will tell you that a string can not be used in the addition expression.</p>
+            <p>It is by no means required that the "Add" expression must only accept "number" types, or that its principal type should be a number. It could accept integers, floats, strings, or any other type. I've constrained it to numbers because that's how I want my programming language to operate. If you have different goals then you would express those goals in your constraint generation step.</p>
             <h2>Solving Constraints</h2>
             <p>A constraint solver is even easier than a constraint generator (at least for now). We iterate over the constraints and check that they match. If they don't then we raise an error. What could be simpler?</p>
             <p><code><pre>for (c1, c2) in constraints {
@@ -66,14 +68,14 @@ enum Type {
         panic!("How could you have possibly messed this up?")
     }
 }</pre></code></p>
-            <p>Later I will produce a quadratic constraint solver which is moderately more complex than this. You can do much better than quadratic complexity and you can solve constraints in a much better way than I will adopt (left bias). The goal of this article is understanding. The quadratic, left-biased solver is the most straight-forward way to produce this thing, so that's what I've done.</p>
+            <p>Later I will produce a constraint solver which has quadratic-complexity and is moderately more complex than this. You can do much better than quadratic complexity and you can solve constraints in a much better way than I will adopt. The goal of this article is understanding. The quadratic, left-biased solver is the most straight-forward way to produce this thing, so that's what I've done.</p>
             <p>If you're following along you should be able to run the program. Create an expression, generate the constraints, and pass those constraints to the solver. If your program panics then you know your expression is not a valid type. If no output was returned then you know there was no type error.</p>
             <p>We still don't know the prinicipal type of the program. I've not demonstrated how to get that information out of it yet. But since there's only one valid type in our system so far I'm sure you can guess what the principal type is!</p>
             <h2>If Expressions</h2>
             <p>Let's return to constraint generation for now. We'll generate quite a few more constraints for quite a few more expression types. Constraint generation will be something we return to frequently in this article.</p>
-            <p>If expressions contain three subexpressions. The "condition" expression, the "then" expression, and the "else" expression. Alternatively referred to as "consequence" and "alternative".</p>
+            <p>If-expressions contain three subexpressions. The "condition" expression, the "then" expression, and the "else" expression. Alternatively referred to as "consequence" and "alternative".</p>
             <p><code><pre>If(Box&lt;Expr&gt;, Box&lt;Expr&gt;, Box&lt;Expr&gt;)</pre></code></p>
-            <p>The if expression has two rules in our language. First, "then" and "else" expressions must have the same type. Second, the "condition" expression must be a boolean type.</p>
+            <p>The if expression has two rules in our language. First, the "then" and "else" expressions must have the same type. Second, the "condition" expression must be a boolean type.</p>
             <p>Let's add a new boolean type to our Type enumeration.</p>
             <p><code><pre>enum Type {
     TNumber,
@@ -99,8 +101,8 @@ enum Type {
     (t, constraints)
 }</pre></code></p>
             <p>Something weird happened. There's this thing called <code>tygen</code> and its littering its <code>fresh()</code> output everywhere! We've generated a fresh type variable. It's just a number. If this is the first time we've generated a type variable its value is 0. Subsequent generations will increment this value. Some programming languages represent this as <code>'a, 'b, 'c</code> and so on, but this is just a visual representation. Numbers are trivially compared and generated. They're much nicer to work with so that's what we use.</p>
-            <p>The process of generating constraints for if expressions mostly mirrors addition. Where it differs is in the generation of a fresh type variable. I can not express this strongly enough, fresh type variables are meaningless placeholders. They do nothing except occupy space until we solve them. It's an ID for a row in a database or an index in an array or a pointer to memory. The value of these things are immaterial. They're only important in so far as it allows us to communicate about a type at some location in our abstract syntax tree.</p>
-            <p>The reason we use a fresh type variable, rather than asserting the "then" and "else" conditions equal each other explicitly, is so we can find the most general type of the expression. Presently this distinction in our program has no value but it will have some value later.</p>
+            <p>The process of generating constraints for if expressions mostly mirrors addition. Where it differs is in the generation of a fresh type variable. I can not express this strongly enough, fresh type variables are meaningless placeholders. They do nothing except occupy space until we solve them. It's an ID for a row in a database or an index in an array or a pointer to memory. The values of these things are immaterial. They're only important in so far as it allows us to communicate about a type at some location in our abstract syntax tree.</p>
+            <p>The reason we use a fresh type variable, rather than asserting the "then" and "else" conditions equal each other explicitly, is so we can treat the two branches symmetrically. We don't want to favor one branch of the conditional over the other.</p>
             <p>Let's update our implementation to support fresh type variable generation.</p>
             <p><code><pre>fn generate_constraints(expr: &Expr, tygen: &mut TypeGen) -> (Type, Vec<(Type, Type)>)</pre></code>
             </p>
@@ -123,12 +125,254 @@ impl TypeGen {
         Type::TVariable(self.0)
     }
 }</pre></code></p>
-            <footer>
-                <p>
-                    <a href="https://github.com/cma256/cma256.github.io/issues/4">Leave a comment</a> | 
-                    <a href="../index.html">Return Home</a>
-                </p>
-            </footer>
+            <p>Next we need to solve for the new TVariable constraints. Type variables represent type "holes" in our program. We don't know what the type of this expression should be. The solver's job is to figure that out. We do that by creating a substitution set. If we learn that T0 is equal to TNumber then that substitution is recorded in the map. If we later learn that T0 is equal to TBoolean, we'll lookup T0 in the substitution set, discover that its already equal to TNumber, and raise a unification error. This repeats until you eventually know the type of your program.</p>
+            <pre><code>fn solve(ty: &Type, constraints: Vec<Constraint>) -> Type {
+    let mut subst = HashMap::new();
+    for (t1, t2) in constraints {
+        unify(&t1, &t2, &mut subst);
+    }
+    apply_subst(ty, &subst)
+}
+
+fn unify(t1: &Type, t2: &Type, subst: &mut HashMap&lt;usize, Type&gt;) {
+    if t1 == t2 {
+        return;
+    }
+
+    match (t1, t2) {
+        (Type::TVariable(v), other) | (other, Type::TVariable(v)) => {
+            if let Some(bind) = subst.get(&v) {
+                unify(&other, &bind.clone(), subst);
+            } else {
+                subst.insert(*v, other.clone());
+            }
+        }
+        _ => panic!("The types no be equaling"),
+    };
+}
+
+fn apply_subst(ty: &Type, subst: &HashMap&lt;usize, Type&gt;) -> Type {
+    match ty {
+        Type::TVariable(i) => subst.get(i).unwrap().clone(),
+        _ => ty.clone(),
+    }
+}</code></pre>
+            <p>You should know that these constraints we're generating and the solvers we're producing to solve them are incorrect. They're toys to illustrate an idea. In the next section we're going to significantly accelerate to the ending. If I've done an okayish job you should have the gist of what we're doing.</p>
+            <h2>Let Expressions</h2>
+            <p>To support let expressions, we begin by updating the <code>Expr</code> enum with the new expression types. The two expression types are: assignment and reference (let and var).</p>
+            <pre><code>enum Expr {
+    ...,
+    Let(String, Box&lt;Expr&gt;, Box&lt;Expr&gt;),
+    Var(String),
+}</code></pre>
+            <p>With these new expressions we can write a program that looks like this: <code>let a = 1 in a + 1</code>.</p>
+            <p>Variables introduce an interesting wrinkle to our type inference algorithm. <code>a</code> has a type which is defined in a location distinct from its usage. When a variable is referenced we need some way to look up its type. The <code>generate_constraints</code> function definition needs to be updated to accept a type environment argument. The environment is a mapping of variable name to type.</p>
+            <p>Now when we encounter a variable we'll know how to look it up and return its type to the interested caller.</p>
+            <pre><code>fn generate_constraints(
+    expr: &Expr,
+    env: &mut HashMap&lt;String, Type&gt;,
+    tygen: &mut TypeGen,
+) -&gt; (Type, Vec&lt;(Type, Type)&gt;)</code></pre>
+            <p>Now to finish the section we'll generate constraints for these new expression variants. Variable first.</p>
+            <pre><code>Expr::Variable(name) => (env.get(name).unwrap().clone(), vec![])</code></pre>
+            <p>Easy. If you encounter a variable look it up. If an undefined variable is referenced we panic. You're welcome to return a more appropriate error message or detect these errors in an earlier phase of your language's compilation pipeline. For the purposes of this article, however, its out of scope.</p>
+            <p>Next we'll generate constraints for the <code>Let</code> expression.</p>
+            <pre><code>Expr::Let(name, value, body) => {
+    let (ty1, mut cs1) = generate_constraints(value, env, tygen);
+    env.insert(name.clone(), ty1.clone());
+
+    let (ty2, mut cs2) = generate_constraints(body, env, tygen);
+    env.remove(name);
+
+    let mut constraints: Vec<(Type, Type)> = vec![];
+    constraints.append(&mut cs1);
+    constraints.append(&mut cs2);
+
+    (ty2, constraints)
+}</code></pre>
+            <p>Most of the constraint tracking and type generation code are repeats of what we learned already. The new twist is that we store the variable's type in the type environment as the output of the type returned by constraint generation on the value. If <code>a = 1</code> then <code>a</code> is an <code>Integer</code> type. That association must be maintained in the type environment map.</p>
+            <p>There's some subtlety here but nothing extreme. Notice when the variable goes out of scope it is removed from the environment. If you're really paying attention (or getting unexplained error messages) you may notice that shadowed variables are overwritten. They are also removed from the environment before the lifetime of the shadowed variable has expired. This is an error waiting to happen if you haven't hit it already. There are a few solutions: disallow shadowing, use a more appropriate data structure which preserves shadowed variables, track them manually, or something else. What you choose to do is up to you. I'm opting for the easy route.</p>
+            <p>Before we leave this section we need to refactor the constraint generation code we just wrote. We're implementing a type inference algorithm for 'Let-bound polymorphic' programs. Let variables are polymorphic. We don't have a function expression yet so we can get away with treating every variable as monomorphic (as we are now). But if we do that then we're going to compound the amount of work we need to do in the next section. Introducing this distinction earlier than is strictly necessary is useful from an educational and cognitive load-shedding standpoint.</p>
+            <p>Let's introduce a new enum.</p>
+            <pre><code>enum Binding {
+    Monomorphic(Type),
+    Polymorphic(Type, HashSet&lt;usize&gt;),
+}</code></pre>
+            <p>And update our generate_constraints function's type signature to include:</p>
+            <pre><code>env: &mut HashMap&lt;String, Binding&gt;,
+mono_set: &HashSet&lt;usize&gt;,
+            </code></pre>
+            <p>And finally update our constraint generation to consider monomorphic and polymorphic bindings.</p>
+            <pre><code>Expr::Let(name, value, body) => {
+    let (ty1, mut cs1) = generate_constraints(value, env, mono_set, tygen);
+    env.insert(name.clone(), Binding::Polymorphic(ty1, mono_set.clone()));
+
+    let (ty2, mut cs2) = generate_constraints(body, env, mono_set, tygen);
+    env.remove(name);
+
+    let mut constraints = vec![];
+    constraints.append(&mut cs1);
+    constraints.append(&mut cs2);
+
+    (ty2, constraints)
+}
+Expr::Variable(name) => match env.get(name).expect("Unbound variable").clone() {
+    Binding::Monomorphic(ty) => (ty, vec![]),
+    Binding::Polymorphic(ty, mono_set) => {
+        let poly_ty = tygen.fresh();
+        let constraint = Constraint::ImplicitInstance(poly_ty.clone(), ty, mono_set);
+        (poly_ty, vec![constraint])
+    }
+}</code></pre>
+            <p>"mono_set" is a strange addition. Heeren refers to the "mono_set" as <code>M</code> in his paper. It represents the set of monomorphic type variables the program encountered along that particular branch of the AST -- otherwise referred to as "free". In practice, these are all the type variables which were generated to represent the type of a function parameter. Function parameters are <em>not</em> polymorphic. Their type variables get thrown into the "mono_set" when they're encountered.</p>
+            <p>"ImplicitInstance" constraints are also a strange new addition. Polymorphism introduces some complexity to constraint solving. The implicit instance constraint gives us the machinery to tame that complexity. I would give you a deeper explanation but at this stage we're not ready. We'll come back to it when we discuss the new constraint solver.</p>
+            <p><a href="https://johnsalvatier.org/blog/2017/reality-has-a-surprising-amount-of-detail">Reality has a suprising amount of detail</a> and so does this type inference algorithm. In the following sections I will coarsely define the type inference algorithm and gradually refine it to its correct state. The algorithm we produce during these intermediate steps will be entirely incorrect, but by doing so I'll be able to gradually reveal deeper, more-subtle properties of the algorithm which might otherwise get washed out by hundreds of lines of prose, or, worse, a few terse, jargon-dense paragraphs.</p>
+            <p>To make our program compile we're going to add a new <code>Constraint</code> enum and update the <code>generate_constraints</code> signature to its final state:</p>
+            <pre><code>enum Constraint {
+    Equality(Type, Type),
+    ExplicitInstance(Type, Type),
+    ImplicitInstance(Type, Type, HashSet&lt;usize&gt;),
+}
+
+fn generate_constraints(
+    expr: &Expr,
+    env: &mut HashMap&lt;String, Binding&gt;,
+    monomorphic: &HashSet&lt;usize&gt;,
+    tygen: &mut TypeGen,
+) -&gt; (Type, Vec&lt;Constraint&gt;) {</code></pre>
+            <p>Your program should hopefully compile and function as a constraint generator. Your constraint solving code will need to be commented out for now.</p>
+            <h2>Functions and their Application</h2>
+            <p>Finally, we introduce the last two expression variants. The function expression and the function application expression. With these variants you can produce interesting programs and interesting type inference algorithms.</p>
+            <pre><code>enum Expr {
+    ...,
+    App(Box&lt;Expr&gt;, Box&lt;Expr&gt;),
+    Fun(String, Box&lt;Expr&gt;),
+}</code></pre>
+            <p>Since we've introduced a new expression type, our <code>Type</code> enum also needs to change. We'll call it "TArrow". It accepts two arguments. The first argument is the function's argument type and the second argument is the function's body type.</p>
+            <pre><code>enum Type {
+    ...,
+    TArrow(Box&lt;Type&gt;, Box&lt;Type&gt;)
+}</code></pre>
+            <p>Now let's generate some constraints.</p>
+            <pre><code>Expr::Application(function, argument) => {
+    let (func_ty, mut func_cs) = generate_constraints(function, env, mono_set, tygen);
+    let (arg_ty, mut arg_cs) = generate_constraints(argument, env, mono_set, tygen);
+
+    let ret_ty = tygen.fresh();
+
+    let mut constraints = vec![];
+    constraints.append(&mut func_cs);
+    constraints.append(&mut arg_cs);
+    constraints.push(Constraint::Equality(
+        func_ty,
+        Type::TArrow(Box::new(arg_ty), Box::new(ret_ty.clone())),
+    ));
+
+    (ret_ty, constraints)
+}
+Expr::Function(param, body) => {
+    let param_ty = tygen.fresh();
+    env.insert(param.to_string(), Binding::Monomorphic(param_ty.clone()));
+
+    let mut inner_ms = mono_set.clone();
+    inner_ms.extend(param_ty.free_vars());
+
+    let (body_ty, body_cs) = generate_constraints(body, env, &inner_ms, tygen);
+    env.remove(param);
+
+    let ty = Type::TArrow(Box::new(param_ty), Box::new(body_ty));
+    (ty, body_cs)
+}</code></pre>
+            <p>First, the easy stuff. We're generating types and constraints as before. The 'Application' branch should be completely unsuprising to you. It follows the same patterns we've laid out in the previous sections. The 'Function' branch is a bit more complicated. We're now inserting monomorphic bindings into our type environment. Remember, this is a let-bound polymorphic language. There is no "let" preceeding the lambda's argument. It is <em>not</em> polymorphic. Though I'm focusing on the syntax of the keyword "let" there are deeper reasons to restrain polymorphism to <code>Let</code> expressions only. Not least of which is soundness (at least within this algorithm).</p>
+            <p>Looking at the function expression's branch, there's something called an 'inner mono set' which extends the outer monoset with the free variables of the function's parameter type. The inner mono set's raison d'etre is relatively straight-forward to explain. Whatever types were monomorphic before the function's body stay monomorphic within the function's body. Its lexical scoping rules but for your type system.</p>
+            <p>If I were a really cool guy, I'd have used a persistent HAMT and I wouldn't need the clone but, then again, we wouldn't have a reason to talk about this subtlety.</p>
+            <p>Before we go let's talk about 'free variables'. Consider this function:</p>
+            <pre><code>fun x -> x</code></pre>
+            <p>What is the type of <code>x</code>? No clue. There's not enough context. The variable is context... free! You've cracked the code. That's it. There's really nothing more to say about it.</p>
+            <p>There is an additional type of type variable which is closely related to free variables: the quantified type variable. Consider this expression:</p>
+            <pre><code>let y = fun x -> x in ...</code></pre>
+            <p>What is x's type? Still no clue. <code>x</code> is still free inside its own function body but <code>x</code> is no longer a free variable once it enters the <code>in</code> expression. It becomes 'quantified' at that stage.</p>
+            <p>If you've heard of "forall" this is exactly what this is. The best way to understand forall is as a function for generating types. Since 'y' is polymorphic, usage of <code>y</code> can vary by callsite. <code>y</code>'s type therefore is <code>∀x. x -> x</code>. Using basic alegbraic reasoning, if we substitute <code>TBool</code> or <code>TNum</code> for <code>x</code> what is the output of the type generating function? <code>TBool -> TBool</code> and <code>TNum -> TNum</code>. This is known as instantiation.</p>
+            <p>To tie it all together, free variables are <em>generalized</em> into quantified variables before being <em>instantiated</em> into monomorphic types.</p>
+            <p>Enough talk. Let's write some code that generates free type variables.</p>
+            <pre><code>impl Type {
+    fn free_vars(&self) -> HashSet<usize> {
+        match self {
+            Type::TArrow(parameter, body) => {
+                let mut free = HashSet::new();
+                free.extend(parameter.free_vars());
+                free.extend(body.free_vars());
+                free
+            }
+            Type::TVariable(v) => HashSet::from([*v]),
+            _ => HashSet::new(),
+        }
+    }
+}</code></pre>
+            <p>This is all we need to find the free variables of a type. For the quantified variables we'll need to extend this greatly. It involves adding methods that are never called in the constraint generation phase. We'll add them now because we're on the subject and it will let you see exactly what's relevant to constraint solving and what's relevant to generation.</p>
+            <pre><code>impl Type {
+    fn free_vars(&self) -> HashSet<usize> {
+        match self {
+            Type::TArrow(parameter, body) => {
+                let mut free = HashSet::new();
+                free.extend(parameter.free_vars());
+                free.extend(body.free_vars());
+                free
+            }
+            Type::TForall(ty, quantified) => {
+                let mut free = ty.free_vars();
+                for q in quantified.iter() {
+                    free.remove(q);
+                }
+                free
+            }
+            Type::TVariable(v) => HashSet::from([*v]),
+            _ => HashSet::new(),
+        }
+    }
+
+    fn generalize(&self, monomorphic: &HashSet<usize>) -> Type {
+        let quantified = self
+            .free_vars()
+            .difference(monomorphic)
+            .cloned()
+            .collect::<Vec<usize>>();
+        Type::TForall(Box::new(self.clone()), quantified)
+    }
+
+    fn instantiate(&self, tygen: &mut TypeGen) -> Type {
+        fn find_and_replace(t: Type, subst: &HashMap<usize, Type>) -> Type {
+            match t {
+                Type::TArrow(parameter, body) => Type::TArrow(
+                    Box::new(find_and_replace(*parameter, subst)),
+                    Box::new(find_and_replace(*body, subst)),
+                ),
+                Type::TVariable(i) => subst.get(&i).map_or(t, |v| v.clone()),
+                _ => t,
+            }
+        }
+
+        match self {
+            Type::TForall(ty, quantified) => {
+                let subst = HashMap::from_iter(quantified.iter().map(|v| (*v, tygen.fresh())));
+                find_and_replace(*ty.clone(), &subst)
+            }
+            _ => self.clone(),
+        }
+    }
+}</code></pre>
+            <p>First the free_vars addition. We now consider a <code>TForall</code> type. It's free variables are simply whatever the free variables of its principal type are minus whatever is quantified within the type scheme. Until we write our solver this doesn't carry much weight, but we can take it at face value that we're performing some set difference operation where the only things that are free are the things that have not already been spoken for by the wrapping <code>TForall</code> type.</p>
+            <p>Generalization is realtively easy to understand as well. We get the free variables of the type and then subtract the 'mono set' given to us. The final output is a TForall where its principal type is the type being generalized and its quantified variables are whatever has not declared monomorphic in the outerscope.</p>
+            <p>For example:</p>
+            <pre><code>fun x -> let y = fun z -> z in ...</code></pre>
+            <p><code>y</code> produces the <code>TForall</code> type. <code>x</code> is monomorphic and already exists in the monoset our constraint generation function produced. It can not be quantified. It must remain free. It will be the type variable that is removed from the computed free variables set. <code>z</code> will be the other computed free variable. It remains in the set (and is therefore a quantified type variable) because it is polymorphic.</p>
+            <p>If this isn't clear, refer to the earlier paragraphs where I discuss this "function body scoping" property of the algorithm.</p>
+            <p>Instantitation, you'll recall, is the process of taking a polymorphic type and producing a monomorphic type. That's precisely what we're doing here. For each quantified type variable, we produce a new, monomorphic type variable. We then reconstruct the type except replacing its quantified type variables with the new free type variables. This makes the resulting type more monomorphic than the previous type but does not guarantee fully monomorphism. There could be nested polymorphism still within the type. Crucially, whatever becomes monomorphic during this operation stays monomorphic.</p>
+            <p>Take a bow. You're officially done generating constraints. Technically you were done a while ago but we sprinted ahead because we had a good opportunity to identify ownership in this generalizing-instantiating soup. I wonder if it gets any easier from here...</p>
+            <h2>An Advanced Constraint Solver</h2>
+            <p>The solver has been neglected for a while. Truth be told, I couldn't think of a good intermediate step that was simple enough to educate, and correct enough to pass some primitive test coverage. Unfortunately, we get to 'draw the rest of the fucking owl'.</p>
+            <p>Here's the plan, we've got a sack of constraints. We're going to pull out a constraint, see if its solvable, and, if it is, solve it. If its not solvable it goes back into the bag until we run out of other constraints to solve. Then we'll try it again. If it still fails we panic, but if it succeeds the program is correct.</p>
+            <footer><p><a href="../index.html">Return Home</a></p></footer>
         </article>
     </main>
 </body>
