@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../style.css">
+    <title>A User's Guide to TLS</title>
+</head>
+<body>
+    <main>
+        <article>
+            <header>
+                <h1>A User's Guide to TLS</h1>
+                <p>Published on Thursday, November 5, 2026 - 8:00 PM CST</p>
+            </header>
+            <p>TLS is a protocol that I'm willing to bet every programmer on Earth has applied at one point or another. TLS stands for "Transport Layer Security". Because I've seen some fear, confusion, and mistruths around using TLS in Python, I wanted to demonstrate both how easy it is to use (you're already doing it) and how obvious it is (you're already doing it).</p>
+            <p>First, TLS is just a protocol which can be layered within a TCP stream. When you make a TLS request you do not in any way interfere with TCP or HTTP or your application layer protocol. These protocol layers are fully decoupled from one another (I'm overstating this point as this is an introductory article). If we were to model it as a function call chain it would look like this: <code>tcp(tls(http(bytes)))</code>.</p>
+            <p>Let's see an example TLS client:</p>
+            <pre><code>import socket
+import ssl
+
+# spooky context instance
+ctx = ssl.create_default_context()
+
+with socket.create_connection(("www.python.org", 443)) as sock:
+    with ctx.wrap_socket(sock, server_hostname="www.python.org") as tls:
+        tls.sendall(b"hello")
+        data = tls.recv(4096)</code></pre>
+            <p>Seven lines of code to implement a TLS client. But, you may say, look at all this crazy code you had to call to make it work. What's the overhead of all this? Let's consider another example:</p>
+            <pre><code>import requests; requests.get("https://www.python.org")</code></pre>
+            <p>The protocol prefix implies this request is encrypted (https), but where is our SSL import? The encryption, though cleverly hidden behind a few method calls, is right in front of you. Follow the "requests.get" method to its <a href="https://github.com/urllib3/urllib3/blob/c5347bbd39203d68d7b0e3ffb83ced3e3b4b9109/src/urllib3/util/ssl_.py#L481">source</a> and you eventually find:</p>
+            <pre><code>return ssl_context.wrap_socket(sock, server_hostname=server_hostname)</code></pre>
+            <p>It's at this point you unlock the secrets of the universe. It's code all the way down. <em>There is no magic.</em> You have been calling this code all along; you just never noticed.</p>
+            <p>The big question people now have is how do I define a server? The pattern established by the client holds there as well. The bigger question people ask is how do I <em>load balance</em> between multiple TLS-protected TCP servers?</p>
+            <p>You use a load balancer. Load balancers, like nginx or HAProxy, are described as "Layer 4" reverse proxies. <em>They do not care about your application-layer protocol</em>. They speak TCP and TLS. They can terminate TLS if configured and will forward plaintext TCP bytes to your application server.</p>
+            <p>I'll leave a TCP server as an exercise to the reader. You don't need my help to prompt your favorite AI agent. However, if you feel the strong, human desire to read and to learn from expert humans in their field then <a href="https://docs.python.org/3/library/ssl.html#socket-creation">this documentation page</a> may be of interest to you.</p>
+            <p>If you still don't believe me then you're welcome to run <a href="https://github.com/cma256/cma256.github.io/tree/master/examples/tls-example/">this example</a>. I've implemented a full TLS-protected TCP client/server system with load balancing performed by nginx. It's overkill but it proves the point well.</p>
+            <footer>
+                <p>
+                    <a href="../index.html">Return Home</a>
+                </p>
+            </footer>
+        </article>
+    </main>
+</body>
+</html>
